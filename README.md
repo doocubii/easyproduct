@@ -80,6 +80,9 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 한 번에 쓰려면 `easyproduct-suite`를 반드시 포함하고, 나머지 6개도 함께 설치해야 오케스트레이터가
 호출할 수 있습니다.
 
+> `.skill` 파일은 이 저장소에 포함돼 있지 않습니다 — 각 스킬 폴더(`skills/easyproduct-*`)를
+> 통째로 zip으로 묶은 뒤 확장자를 `.zip` → `.skill`로 바꾸면 업로드용 파일이 됩니다.
+
 **Claude Code**: 이 저장소를 클론한 뒤 각 스킬 폴더를 `.claude/skills/`(프로젝트 전용) 또는
 `~/.claude/skills/`(전역)에 복사합니다. Claude Code는 실제 파일시스템 위에서 동작하므로,
 스킬이 만든 문서는 작업 중인 프로젝트 폴더에 그대로 파일로 저장되고 세션이 끝나도 남습니다.
