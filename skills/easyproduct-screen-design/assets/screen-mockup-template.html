@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<!--
+  화면 목업 뼈대 — 참고물입니다. 개발의 표준은 화면 설계서의 "글 정의"입니다.
+  이 목업은 참고물이며 temp/mockups/{scope}/ 에 저장합니다(.gitignore 대상, 재생성 가능).
+  컴포넌트 스타일은 여기서 새로 짓지 않고 UI 컴포넌트 인벤토리(ssot/ui-components-{scope}.md,
+  + 도메인 파일의 로컬 컴포넌트)의 값을 그대로 대입합니다.
+  사용법:
+   1) 아래 :root 의 CSS 변수 값을 "확정된 디자인 컨셉 문서의 토큰"으로 채웁니다(색·글꼴·모서리·여백 척도).
+      컨셉 문서 값과 어긋나지 않게 합니다. 각 컴포넌트 규격은 인벤토리 값을 그대로 씁니다.
+   2) 공통 요소(GNB/header/footer/탭바/카드)는 이 뼈대를 재사용하고, 화면 고유 영역만 <main>에 채웁니다.
+   3) 화면 요소에는 data-bind="그룹.필드" 로 데이터 모델 변수를 답니다(목업 요소 ↔ 변수 ↔ 글 정의 추적).
+   4) 폰트가 설치돼 있지 않아도 안 깨지도록 시스템 폰트 fallback을 넣어 둡니다.
+   PNG가 꼭 필요하면 easy-design-concept 의 scripts/render_png.py 방식을 참조해 뽑을 수 있습니다.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>화면 목업 — [화면 이름]</title>
+<style>
+  :root{
+    /* ↓↓↓ 확정된 디자인 컨셉 문서의 값으로 교체 ↓↓↓ */
+    --primary:#2563EB; --primary-strong:#1E40AF; --accent:#F97316;
+    --bg:#FFFFFF; --surface:#F8FAFC; --line:#E5E7EB;
+    --text:#1F2937; --text-sub:#6B7280;
+    --success:#16A34A; --warn:#F59E0B; --danger:#DC2626;
+    --radius:10px; --shadow:0 1px 3px rgba(0,0,0,.08);
+    --tap-min:44px;                 /* 터치 타깃 최소 크기(화면 전역 정책) */
+    --maxw:375px;                   /* 기준 화면폭(화면 전역 정책) */
+    --font:"Pretendard","Apple SD Gothic Neo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    /* ↑↑↑ 여기까지 교체 ↑↑↑ */
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--text);font-family:var(--font);line-height:1.5}
+  .frame{max-width:var(--maxw);margin:0 auto;background:var(--bg);min-height:100vh;
+         display:flex;flex-direction:column;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+
+  /* 공통 GNB (전역 네비) — 1부 공통 UI 정의에서 정의, 화면은 참조만 */
+  .gnb{display:flex;align-items:center;justify-content:space-between;gap:12px;
+       padding:12px 16px;border-bottom:1px solid var(--line);background:var(--bg);
+       position:sticky;top:0;z-index:10}
+  .gnb .logo{font-weight:700;color:var(--primary)}
+  .gnb .actions{display:flex;gap:8px}
+
+  /* 공통 카드 */
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:var(--bg);
+        box-shadow:var(--shadow);margin:12px 16px}
+  .card h3{margin:0 0 6px;font-size:16px}
+  .card p{margin:0;color:var(--text-sub);font-size:14px}
+
+  /* 공통 버튼 */
+  .btn{min-height:var(--tap-min);padding:10px 16px;border-radius:var(--radius);border:0;
+       font-family:inherit;font-size:15px;cursor:pointer}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-secondary{background:transparent;color:var(--primary);border:1px solid var(--primary)}
+  .btn[disabled]{background:var(--line);color:var(--text-sub);cursor:not-allowed}
+  .btn-danger{background:var(--danger);color:#fff}
+
+  /* 공통 입력창 */
+  .field{margin:12px 16px}
+  .field label{display:block;font-size:13px;color:var(--text-sub);margin-bottom:6px}
+  .input{width:100%;min-height:var(--tap-min);padding:10px 12px;border:1px solid var(--line);
+         border-radius:var(--radius);font-family:inherit;font-size:15px}
+  .input:focus{outline:none;border-color:var(--primary)}
+  .input.error{border-color:var(--danger)}
+  .hint-error{color:var(--danger);font-size:12px;margin-top:4px}
+
+  /* 공통 배지 */
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+  .badge-success{background:#DCFCE7;color:var(--success)}
+  .badge-warn{background:#FEF3C7;color:#92400E}
+
+  main{flex:1}
+
+  /* 상태 표시용(빈 상태·로딩·오류) */
+  .state{padding:40px 16px;text-align:center;color:var(--text-sub)}
+
+  /* 공통 footer / 하단 탭바 */
+  footer{border-top:1px solid var(--line);padding:16px;color:var(--text-sub);font-size:12px;text-align:center}
+  .tabbar{display:flex;border-top:1px solid var(--line);background:var(--bg);
+          position:sticky;bottom:0}
+  .tabbar a{flex:1;text-align:center;padding:10px 0;min-height:var(--tap-min);
+            color:var(--text-sub);text-decoration:none;font-size:12px}
+  .tabbar a.active{color:var(--primary);font-weight:700}
+</style>
+</head>
+<body>
+  <div class="frame">
+
+    <!-- 공통 GNB (1부 참조) -->
+    <header class="gnb">
+      <span class="logo" data-bind="app.name">서비스</span>
+      <span class="actions">
+        <button class="btn btn-secondary" style="min-height:auto;padding:6px 10px">검색</button>
+        <button class="btn btn-secondary" style="min-height:auto;padding:6px 10px">내정보</button>
+      </span>
+    </header>
+
+    <!-- 화면 고유 영역: 여기만 화면마다 바꿉니다 -->
+    <main>
+
+      <!-- 예: 대표 콘텐츠 카드. data-bind 로 변수 연결 -->
+      <div class="card">
+        <span class="badge badge-success" data-bind="request.status">모집중</span>
+        <h3 data-bind="request.title">제목이 여기에 들어갑니다</h3>
+        <p>금액: <b data-bind="request.price">15,000</b>원</p>
+        <button class="btn btn-primary" style="margin-top:12px">지원하기</button>
+      </div>
+
+      <!-- 예: 빈 상태 (상태·예외는 글 정의에서 정하고, 목업으로 확인) -->
+      <!--
+      <div class="state">아직 등록된 요청이 없어요. <br>
+        <button class="btn btn-primary" style="margin-top:12px">첫 요청 올리기</button>
+      </div>
+      -->
+
+    </main>
+
+    <!-- 공통 footer / 탭바 (1부 참조). 폰 앱이면 탭바, 웹이면 footer -->
+    <nav class="tabbar">
+      <a class="active" href="#">홈</a>
+      <a href="#">검색</a>
+      <a href="#">알림</a>
+      <a href="#">내정보</a>
+    </nav>
+    <footer>© [프로젝트 이름] · 이 화면은 목업(참고물)입니다. 표준은 화면 설계서의 글 정의입니다.</footer>
+
+  </div>
+</body>
+</html>
