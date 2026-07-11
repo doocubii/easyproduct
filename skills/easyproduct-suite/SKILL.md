@@ -2,7 +2,7 @@
 name: easyproduct-suite
 description: |
   개발 지식이 없는 사람의 아이디어 하나를, 여러 스킬을 순서대로 조율해 **개발 문서 세트 전체**(기획서·설계서 → 화면·기능 구조(IA) → 데이터 모델 → 디자인 컨셉 → 정책·약관 → (옵트인) 화면 설계서 → (옵트인) spec-kit 인계 안내문)로 한 흐름에 완성해 주는 지휘(오케스트레이터) 스킬.
-  개별 스킬(easyproduct-doc-builder / easyproduct-ia-designer / easyproduct-data-model / easyproduct-design-concept / easyproduct-policy-legal / easyproduct-screen-design)을 각각 실행하는 대신, 이 스킬이 순서·질문·자료를 한 번에 관리하고 각 단계의 결과를 다음 단계로 이어붙인다(정체성·유형·핵심기능·대상·정보 덩어리 등을 넘겨 같은 질문을 반복하지 않는다). 디자인 확정·문서 리뷰 게이트를 거친 뒤 화면 설계와 spec-kit 인계는 물어서 진행한다.
+  개별 스킬(easyproduct-doc-builder / easyproduct-ia-designer / easyproduct-data-model / easyproduct-design-concept / easyproduct-policy-legal / easyproduct-screen-design, 그리고 옵트인으로 easyproduct-scenario)을 각각 실행하는 대신, 이 스킬이 순서·질문·자료를 한 번에 관리하고 각 단계의 결과를 다음 단계로 이어붙인다(정체성·유형·핵심기능·대상·정보 덩어리 등을 넘겨 같은 질문을 반복하지 않는다). 디자인 확정·문서 리뷰 게이트를 거친 뒤 화면 설계와 spec-kit 인계는 물어서 진행한다.
   반드시 다음 상황에서 사용하세요:
   - "개발 문서 전부/다/처음부터 끝까지 만들어줘", "기획부터 디자인까지 한 번에", "필요한 문서 세트를 통째로" 처럼 **여러 문서를 한 번에** 원할 때
   - 아이디어만 있고 기획부터 디자인까지 **여러 문서가 다 필요한데** 무엇부터 어디까지 만들지 막막할 때

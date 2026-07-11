@@ -29,7 +29,7 @@
 ## 구성 파일
 - `SKILL.md` — 스킬 본문(시나리오의 위상·두 거버넌스 규칙·생애주기·GWT 적용 시점·스케치/파생/검증/승격 절차).
 - `assets/scenario-template.md` — 산출물 템플릿(`SCN.*` ID + GWT + 스텝별 추적 링크 + 추적표 + 원본 링크 + 상태 배지).
-- `references/traceability-check.md` — 정합·추적 점검(검증) 절차: 링크 존재/정합/커버리지/재도출.
+- `references/traceability-check.md` — 정합·추적 점검(검증) 절차: 링크 존재/정합/커버리지/재도출/설계 결함.
 - `references/scenario-vs-usecase-userstory.md` — 시나리오·유스케이스·유저스토리·정책서의 역할 경계(중복 방지).
 - `references/example-walkthrough.md` — 작성 예시(참고 패턴): 채워진 시나리오 + mermaid + 게이트키퍼 보고의 실제 모습.
 
