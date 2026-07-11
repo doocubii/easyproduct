@@ -421,3 +421,18 @@ temp/mockups/{scope}/
 - `assets/ui-components-template.md` — UI 컴포넌트 인벤토리 형식(중앙, 다국어 확장 주석 포함).
 - `assets/screen-mockup-template.html` — 목업 HTML 뼈대(인벤토리 값 대입 자리 + `data-bind` 예시 + 시스템 폰트 fallback + 공통 요소).
 - `references/screen-derivation-guide.md` — IA에서 화면 목록·사이트맵 순서 뽑는 법, 도메인 분리, 메인 선정과 공통 UI·인벤토리 anchor 확정, 목록형 분해, 명세 풍부화 체크리스트.
+
+
+---
+
+## 메타 정보 (버전·릴리즈·배포·라이선스)
+
+이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
+
+- **버전**: `0.1.0` (예정 — 작업 브랜치가 `beta`에 머지될 때 확정되며, 그 전까지는 잠정값이다)
+- **릴리즈 날짜**: 미정 (`beta`가 `main`에 머지될 때, 즉 정식 릴리즈 시점에 확정된다)
+- **배포처(저장소)**: https://github.com/doocubii/easyproduct
+- **라이선스**: Apache License 2.0
+- 버전·릴리즈 확정 규칙은 저장소의 `VERSIONING.md`, 버전별 변경 내역은 `CHANGELOG.md`에 있다.
+
+> 위 값은 세트 전체가 공유하는 버전이다(스킬마다 따로 매기지 않는다). 세트가 함께 배포될 때 같은 값으로 갱신된다.
