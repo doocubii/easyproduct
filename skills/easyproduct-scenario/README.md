@@ -31,6 +31,7 @@
 - `assets/scenario-template.md` — 산출물 템플릿(`SCN.*` ID + GWT + 스텝별 추적 링크 + 추적표 + 원본 링크 + 상태 배지).
 - `references/traceability-check.md` — 정합·추적 점검(검증) 절차: 링크 존재/정합/커버리지/재도출.
 - `references/scenario-vs-usecase-userstory.md` — 시나리오·유스케이스·유저스토리·정책서의 역할 경계(중복 방지).
+- `references/example-walkthrough.md` — 작성 예시(참고 패턴): 채워진 시나리오 + mermaid + 게이트키퍼 보고의 실제 모습.
 
 ## 세트 안에서의 위치
 - 결정의 원본은 여전히 기획서·IA·정책서·데이터 모델입니다. 시나리오는 정책서의 `POL.*`, IA의 `FEAT.*`, 데이터 모델의 `그룹.필드`를 **베끼지 않고 ID로 참조(링크)만** 합니다(링크-온리 규칙).
