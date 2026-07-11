@@ -1,0 +1,36 @@
+# 변경 내역 (Changelog)
+
+이 저장소(easyproduct 스킬 세트)의 버전별 변경 내역이다. 버전·날짜를 언제 확정하는지는 `VERSIONING.md`를 따른다.
+형식은 [Keep a Changelog](https://keepachangelog.com/ko/) 관례를 참고하되 한국어로 정리한다.
+
+- **버전 번호**는 작업 브랜치가 `beta`에 머지될 때 확정된다.
+- **릴리즈 날짜**는 `beta`가 `main`에 머지될 때(정식 릴리즈) 확정된다.
+
+---
+
+## [0.1.0] — 예정 (릴리즈 날짜 미정)
+
+> 상태: `beta` 머지 전 — 버전 번호는 잠정, 릴리즈 날짜는 `main` 머지 시 확정.
+
+### Added (추가)
+- **`easyproduct-scenario` 스킬 신설** — 사용자 여정 시나리오를 요구·설계·테스트를 잇는 "흐름의 축"으로 추가.
+  - Given/When/Then + 스텝별 추적 링크 형식(`SCN.*` ID), 생애주기(스케치→이관→파생→승격→검증).
+  - 두 거버넌스 규칙(결정 이관·링크-온리)으로 SSOT 보존.
+  - 정합·추적 점검(죽은 링크는 확실히, 의미 모순은 후보만) 절차.
+- **정책 규칙 참조용 안정 ID 체계 `POL.*`** — `easyproduct-policy-legal`에 도입.
+  시나리오·화면 설계서·유스케이스가 정책 규칙을 이름이 아니라 ID로 참조 가능.
+- **각 스킬 README.md** 추가.
+- **버전·릴리즈 규칙 문서**(`VERSIONING.md`)와 이 `CHANGELOG.md` 추가.
+
+### Changed (변경)
+- `easyproduct-suite`: 파생 시나리오 옵트인(3.8-D)과 Stage 4 시나리오 정합·추적 점검(3-1) 배선,
+  색인·인계 템플릿에 시나리오 반영.
+- `easyproduct-doc-builder`: GWT 배제 원칙이 비전문가 기획 단계 한정임을 명시(정형 시나리오는 scenario 스킬 소관).
+- `easyproduct-ia-designer`: 유스케이스↔시나리오 경계, 읽기 전용 파생 원칙 공유 명시.
+- `easyproduct-screen-design`: 시나리오가 있으면 화면 도출 드라이버로 사용(화면 SSOT는 글 정의).
+- 루트 README: 스킬 7개 반영, 명명 규칙에 `POL.*` 추가.
+
+---
+
+## 이전 (버전 이전 · 초기 커밋)
+- easyproduct 스킬 세트 최초 구성: 오케스트레이터 `easyproduct-suite` + 6개 전문 스킬, README·LICENSE.
