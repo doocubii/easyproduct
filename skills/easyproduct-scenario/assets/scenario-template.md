@@ -19,15 +19,17 @@
 
 `## SCN.org.onboarding` 예시 (상태: 파생)
 
-- **Given** 로그인한 사용자가 아직 조직이 없다 &nbsp; → `[FEAT.auth.signup]` `[account.type]`
-- **When** "조직 만들기"를 한다 &nbsp; → `[FEAT.org.create]` `[organization]` `[membership.role]`
-- **Then** 본인이 관리자인 조직이 생성된다 &nbsp; → `[membership.role=관리자]`
-- **When** 무료 한도를 넘겨 실행을 시도한다 &nbsp; → `[FEAT.billing.usage]` `[POL.payment.charge]`
-- **Then** 결제/견적 경로로 유도된다 &nbsp; → `[FEAT.billing.checkout]` `[POL.payment.*]`
+- **Given** 로그인한 사용자가 아직 조직이 없다 &nbsp; → 회원가입(`FEAT.auth.signup`) · 계정유형(`account.type`)
+- **When** "조직 만들기"를 한다 &nbsp; → 조직 만들기(`FEAT.org.create`) · 조직(`organization`) · 멤버 역할(`membership.role`)
+- **Then** 본인이 관리자인 조직이 생성된다 &nbsp; → 멤버 역할(`membership.role`)
+- **When** 무료 한도를 넘겨 실행을 시도한다 &nbsp; → 사용량(`FEAT.billing.usage`) · 결제 정책(`POL.payment.charge`)
+- **Then** 결제/견적 경로로 유도된다 &nbsp; → 결제(`FEAT.billing.checkout`) · 결제 정책(`POL.payment.*`)
 
 각 스텝(Given/When/Then)마다:
 - 왼쪽은 **사람이 읽는 흐름 한 문장**.
-- 오른쪽 `[ ]`는 그 스텝이 닿는 **ID 링크만** — `FEAT.*`(기능), `그룹.필드`(데이터), `POL.*`(정책). 규칙·정의 내용을 여기 베끼지 않는다.
+- 오른쪽은 그 스텝이 닿는 것을 **`이름(ID)` 형태로** — 기능 `이름(FEAT.*)`, 데이터 `이름(그룹.필드)`, 정책 `이름(POL.*)`, 유스케이스 `이름(UC.*)`.
+  **규칙·정의 내용(정책 수치 등)을 문장에 베끼지 않는다** — 값은 원본에 있고 여기선 가리키기만 한다.
+- `이름(ID)` 표기는 **새로 만들거나 수정하는 문서에만** 적용한다(기존 문서가 이 형식이 아니어도 틀린 게 아니다).
 - 대안·예외 흐름이 있으면 하위에 `- (대안)` / `- (예외)`로 이어 쓴다.
 
 ---
@@ -52,12 +54,12 @@ flowchart TD
 
 이 시나리오가 닿는 ID를 종류별로 모은다. **검증(정합·추적 점검)이 이 표를 본다.**
 
-| 종류 | 참조 ID | 원본 문서(가리키기만) |
+| 종류 | 참조 `이름(ID)` | 원본 문서(가리키기만) |
 |---|---|---|
-| 기능 | `FEAT.org.create`, `FEAT.billing.checkout` | IA / 화면 설계서 |
-| 데이터 | `organization`, `membership.role`, `account.type` | 데이터 모델 |
-| 정책 | `POL.payment.charge` | 정책서 |
-| 유스케이스 | (해당 유스케이스 링크/제목) | supporting/use-cases.md |
+| 기능 | 조직 만들기(`FEAT.org.create`), 결제(`FEAT.billing.checkout`) | IA / 화면 설계서 |
+| 데이터 | 조직(`organization`), 멤버 역할(`membership.role`), 계정유형(`account.type`) | 데이터 모델 |
+| 정책 | 결제 정책(`POL.payment.charge`) | 정책서 |
+| 유스케이스 | 조직 만들기(`UC.org.create`) | supporting/use-cases.md |
 
 ## 원본 링크
 

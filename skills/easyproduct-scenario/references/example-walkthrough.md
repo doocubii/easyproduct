@@ -23,20 +23,24 @@
 
 ## 2. 작성된 시나리오 (파생 단계 — `supporting/scenarios/scenario-deal-reservePickup.md`)
 
+참조는 **`이름(ID)`** 형식으로 적는다(사람이 읽는 이름 + ID를 함께). 정책 수치("24시간" 등)는 문장에 베끼지 않고 원본을 가리키기만 한다.
+
 ```
 ## SCN.deal.reservePickup  [상태: 파생]
 - 목적: 주변 마감 할인을 예약·결제하고 매장에서 픽업
 - 행위자: 로그인 사용자 / 선행조건: 위치 권한 허용
 
-- Given 위치를 켠 사용자가 주변에 있다        → [FEAT.deal.browse] [user.location]
-- When  마감 할인 상품을 예약한다              → [FEAT.reservation.create] [reservation.status]
-- Then  예약이 "결제대기"로 잡힌다             → [reservation.status=결제대기]
-- When  결제한다                               → [FEAT.payment.checkout] [POL.payment.refund]
-- Then  예약이 "확정"이 된다                    → [reservation.status=확정]
-- When  매장에서 픽업을 확인한다               → [FEAT.pickup.confirm]   ← IA에 없는 ID(의도적 결함)
-- Then  예약이 "완료"가 된다                    → [reservation.status=완료]
-- (예외) 예약 24시간 전 취소 시 환불           → [POL.noshow.cancel] [POL.payment.refund]
+- Given 위치를 켠 사용자가 주변에 있다        → 주변 둘러보기(FEAT.deal.browse) · 위치(user.location)
+- When  마감 할인 상품을 예약한다              → 예약(FEAT.reservation.create) · 예약 상태(reservation.status)
+- Then  예약이 "결제대기"로 잡힌다             → 예약 상태(reservation.status)
+- When  결제한다                               → 결제(FEAT.payment.checkout) · 환불 규칙(POL.payment.refund)
+- Then  예약이 "확정"이 된다                    → 예약 상태(reservation.status)
+- When  매장에서 픽업을 확인한다               → 픽업 확인(FEAT.pickup.confirm)   ← IA에 없는 ID(의도적 결함)
+- Then  예약이 "완료"가 된다                    → 예약 상태(reservation.status)
+- (예외) 취소 가능 기한 내 취소 시 환불        → 취소·환불 규칙(POL.noshow.cancel) · 환불 규칙(POL.payment.refund)
 ```
+
+> 위 예외 스텝은 "24시간" 같은 수치를 문장에 넣지 않는다 — 그 값은 `POL.noshow.cancel`에 있고, 시나리오는 규칙을 가리키기만 한다(값이 바뀌어도 시나리오가 낡지 않게).
 
 ### 한눈에 보기 (mermaid — GWT의 파생 뷰)
 
@@ -49,16 +53,17 @@ flowchart TD
     A2 --> R2(["확정"])
     R2 --> A3["픽업 확인<br/>FEAT.pickup.confirm ⚠"]
     A3 --> R3(["완료"])
-    R2 -. "24시간 전 취소" .-> C(["환불<br/>POL.payment.refund"])
+    R2 -. "기한 내 취소" .-> C(["환불<br/>POL.payment.refund"])
 ```
 
 ### 추적표
 
-| 종류 | 참조 ID | 원본 문서 |
+| 종류 | 참조 `이름(ID)` | 원본 문서 |
 |---|---|---|
-| 기능 | `FEAT.deal.browse`, `FEAT.reservation.create`, `FEAT.payment.checkout`, `FEAT.pickup.confirm`⚠ | IA / 화면 설계서 |
-| 데이터 | `user.location`, `reservation.status`, `deal` | 데이터 모델 |
-| 정책 | `POL.payment.refund`, `POL.noshow.cancel` | 정책서 |
+| 기능 | 주변 둘러보기(`FEAT.deal.browse`), 예약(`FEAT.reservation.create`), 결제(`FEAT.payment.checkout`), 픽업 확인(`FEAT.pickup.confirm`)⚠ | IA / 화면 설계서 |
+| 데이터 | 위치(`user.location`), 예약 상태(`reservation.status`), 상품(`deal`) | 데이터 모델 |
+| 정책 | 환불 규칙(`POL.payment.refund`), 취소·환불 규칙(`POL.noshow.cancel`) | 정책서 |
+| 유스케이스 | 예약·픽업(`UC.reservation.pickup`) | supporting/use-cases.md |
 
 ---
 
@@ -82,7 +87,7 @@ flowchart TD
     → 되돌릴지는 사용자가 결정한다. 자동으로 재설계하지 않는다.
 
 ■ 의미 불일치 (확신 시만)
-  - 시나리오 예외 "24시간 전 취소 시 환불" ↔ POL.noshow.cancel "24시간" → 일치. 보고 없음.
+  - 예외 스텝이 취소 규칙을 값 없이 POL.noshow.cancel 로 가리키므로, 정책 수치가 바뀌어도 시나리오가 낡지 않음 → 불일치 없음.
 ```
 
 핵심: **죽은 링크·커버리지 누락은 확실히 잡고**, **설계 결함은 회귀 후보와 함께 제시하되 결정은 사용자에게** 맡긴다.
