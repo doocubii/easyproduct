@@ -5,7 +5,7 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 
 개발 지식이 전혀 없는 사람도 **대화만으로** 아이디어 하나를 완전한 개발 착수 전 문서 세트로
 완성할 수 있게 돕는 [Claude Skills](https://docs.claude.com) 모음입니다. 오케스트레이터
-스킬(`easyproduct-suite`)이 6개의 전문 스킬을 순서대로 조율해, 기획서부터 화면 설계서까지
+스킬(`easyproduct-suite`)이 7개의 전문 스킬을 순서·시점에 맞게 조율해, 기획서부터 화면 설계서·시나리오까지
 한 흐름으로 만들어 줍니다. 모든 산출물은 **한국어**로 작성됩니다.
 
 > 이 저장소는 [GitHub Spec Kit](https://github.com/github/spec-kit)(spec-kit) 자체가 아닙니다.
@@ -37,6 +37,8 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 옵트인(원할 때만):
 - **화면 설계서** — 화면마다 컴포넌트·배치·문구까지 고정한 구현 명세(사용자 앱/관리자 백오피스
   별도 프로젝트로 분리), 재사용 UI 컴포넌트 인벤토리 포함
+- **시나리오** — 여러 화면·기능·정책을 관통하는 사용자 여정(흐름의 축). 각 스텝이 닿는
+  기능·데이터·정책을 ID로 링크해 문서 간 정합·추적을 점검하고, spec-kit 인수 시나리오로 승격
 - **기능 관계도** — 프론트↔백오피스 기능이 서로 어떻게 트리거하는지 도식화
 - **spec-kit 인계 안내문** — 완성된 문서 세트를 spec-kit(또는 다른 SDD 도구)에 넘기기 위한 요약
 
@@ -44,13 +46,14 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 
 | 스킬 | 역할 | 단독 실행 |
 |---|---|---|
-| [`easyproduct-suite`](./skills/easyproduct-suite/) | 아래 6개를 순서대로 조율하는 오케스트레이터 | — |
+| [`easyproduct-suite`](./skills/easyproduct-suite/) | 아래 7개를 순서·시점에 맞게 조율하는 오케스트레이터 | — |
 | [`easyproduct-doc-builder`](./skills/easyproduct-doc-builder/) | 기획서 + 설계서 작성 | 가능 |
 | [`easyproduct-ia-designer`](./skills/easyproduct-ia-designer/) | 화면·기능 구조(IA), 기능 ID 체계, 네비게이션 설계 원칙 | 가능 |
 | [`easyproduct-data-model`](./skills/easyproduct-data-model/) | 데이터 모델(정보 그룹·필드) 생성·수정·조회 | 가능 |
 | [`easyproduct-design-concept`](./skills/easyproduct-design-concept/) | 디자인 컨셉 3안 + 미리보기 생성 | 가능 |
 | [`easyproduct-policy-legal`](./skills/easyproduct-policy-legal/) | 정책서 + 이용약관·개인정보처리방침 초안 | 가능 |
 | [`easyproduct-screen-design`](./skills/easyproduct-screen-design/) | 화면별 상세 설계서(구현 명세 수준) | 가능 |
+| [`easyproduct-scenario`](./skills/easyproduct-scenario/) | 사용자 여정 시나리오(흐름의 축) 작성 + 문서 간 정합·추적 점검 | 가능 |
 
 각 스킬은 **독립적으로도 동작**하도록 설계되어 있습니다 — 서로의 내부 파일을 직접 참조하지
 않고, 필요한 재료(기획서, IA, 데이터 모델 등)를 입력으로 받아 동작합니다. `easyproduct-suite`는
@@ -64,10 +67,14 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
         ↓
    [게이트] 디자인 확정 + 문서 전체 검토 + 필요하면 개별 문서만 재수정
         ↓ (옵트인으로 질문)
-   화면 설계서 (사용자 앱 → 필요시 관리자 백오피스 별도) → 기능 관계도
+   화면 설계서 (사용자 앱 → 필요시 관리자 백오피스 별도) → 시나리오(파생) → 기능 관계도
+        ↓ (Stage 4: 시나리오가 있으면 문서 간 정합·추적 점검)
         ↓ (옵트인으로 질문)
    spec-kit 인계 안내문
 ```
+
+> 시나리오는 반대로 **기획 직후 스케치**해 화면·기능 도출을 이끄는 드라이버로도 쓸 수 있습니다(옵트인).
+> 이때 스케치에서 나온 결정은 반드시 원본 문서(IA·정책 등)로 옮긴 뒤 진행합니다.
 
 - **모드 두 가지**: 가이드 모드(단계마다 확인받으며 진행) / 자동 모드(기획서 확정과 디자인
   확정, 두 게이트만 지키고 나머지는 합리적으로 판단해 무중단 진행).
@@ -224,7 +231,7 @@ Claude: 네, 처음부터 다시 만들지 않고 지금 버전 구조와 비교
 ├── 00-index.md          ← 문서 세트 지도 (스냅샷, SSOT 아님, .gitignore 대상)
 ├── .gitignore
 ├── ssot/                ← 결정이 사는 곳 — 기획서·설계서·IA·데이터모델·디자인컨셉·정책·약관 등
-├── supporting/          ← 보강 자료 — 유저 스토리·유스케이스
+├── supporting/          ← 보강 자료 — 유저 스토리·유스케이스·시나리오(scenarios/)
 ├── reference/           ← 파생이지만 보존 — 기능 관계도·디자인 3안 비교
 ├── screens/{user,backoffice}/  ← 화면 설계서(도메인별 파일 + 공통 UI 정의)
 └── temp/                ← 확인 후 버려도 되는 것 — 화면 목업 HTML (.gitignore 대상)
