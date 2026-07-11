@@ -41,7 +41,7 @@
 - 개별 문서를 고쳐야 하면 전체를 다시 만들지 않고 해당 문서의 스킬만 수정 모드로 재진입시킨 뒤 게이트로 돌아옵니다.
 
 ## 버전
-- easyproduct 세트 `0.1.0`(예정)의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.1.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.

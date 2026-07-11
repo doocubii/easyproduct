@@ -41,7 +41,7 @@
 - 유스케이스·기능 관계도는 이 IA 문서를 재료로 삼는 파생 산출물이며, 더 큰 사용자 여정은 `easyproduct-scenario`가 맡습니다.
 
 ## 버전
-- easyproduct 세트 `0.1.0`(예정)의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.1.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.
