@@ -197,3 +197,18 @@ description: |
 - `references/mood-design-map.md` — 분위기를 색·글꼴·모양 등 구체 값으로 번역하는 지식베이스 + 질문법·"모르겠어요" 대응
 - `references/preview-guide.md` — UI 키트·샘플 페이지 HTML 구조와 PNG 변환 방법 (3안 렌더링 시 반드시 참고)
 - `scripts/render_png.py` — HTML을 PNG로 변환하는 스크립트 (배치·Claude Code용)
+
+
+---
+
+## 메타 정보 (버전·릴리즈·배포·라이선스)
+
+이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
+
+- **버전**: `0.1.0` (`beta` 머지로 확정)
+- **릴리즈 날짜**: 2026-07-12 (현재 `beta` 머지 기준일. `main` 머지 시 그 날짜로 갱신된다 — 릴리즈 날짜는 단일 필드이고, 브랜치에 따라 beta/main 머지일을 뜻한다)
+- **배포처(저장소)**: https://github.com/doocubii/easyproduct
+- **라이선스**: Apache License 2.0
+- 버전·릴리즈 확정 규칙은 저장소의 `VERSIONING.md`, 버전별 변경 내역은 `CHANGELOG.md`에 있다.
+
+> 위 값은 세트 전체가 공유하는 버전이다(스킬마다 따로 매기지 않는다). 세트가 함께 배포될 때 같은 값으로 갱신된다.

@@ -56,6 +56,7 @@
 | (옵트인) **UI 컴포넌트 인벤토리 — 사용자 앱** | 재사용 컴포넌트 규격(SSOT). 화면마다 다시 정의하지 않고 이 문서를 참조 | `ssot/ui-components-user.md` |
 | (옵트인) **화면 설계서 — 백오피스** | 관리자 화면 상세. 사용자 앱과 별개 프로젝트 문서(디자인은 절제된 변형) | `screens/backoffice/screen-design-backoffice-index.md` (+ 도메인별 파일) |
 | (옵트인) **UI 컴포넌트 인벤토리 — 백오피스** | 절제된 변형이 적용된 별도 규격(SSOT) | `ssot/ui-components-backoffice.md` |
+| (옵트인) **시나리오** | 여러 화면·기능·정책을 관통하는 사용자 여정(GWT + 추적 링크). 원본을 참조만 하는 **보강자료**, spec-kit 인수 시나리오로 승격 | `supporting/scenarios/scenario-{도메인}-{이름}.md` |
 | (옵트인) **기능 관계도** | 프론트↔백오피스 연동(트리거) 관계. IA에서 도출한 **참조용 파생물**(원본은 IA) | `reference/feature-relation-map.md` |
 | (옵트인) **spec-kit 인계 안내문 — 사용자 앱** | 이 세트를 spec-kit(SDD)에 넘길 인계장(사용자 앱 프로젝트분). **1회성 산출물 — 만들어 바로 전달, 세트 폴더 구조 밖** | `speckit-handoff-user.md` (전달됨) |
 | (옵트인) **spec-kit 인계 안내문 — 백오피스** | 백오피스 프로젝트분 인계장(화면 설계서가 둘 다 있을 때만). 마찬가지로 전달만 하고 폴더에 편입 안 함 | `speckit-handoff-backoffice.md` (전달됨) |
