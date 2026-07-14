@@ -84,22 +84,46 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 ## 설치 방법
 
 **claude.ai**: Settings → Capabilities에서 각 스킬의 `.skill` 파일을 업로드합니다. 세트를
-한 번에 쓰려면 `easyproduct-suite`를 반드시 포함하고, 나머지 6개도 함께 설치해야 오케스트레이터가
+한 번에 쓰려면 `easyproduct-suite`를 반드시 포함하고, 나머지 7개도 함께 설치해야 오케스트레이터가
 호출할 수 있습니다.
 
 > `.skill` 파일은 이 저장소에 포함돼 있지 않습니다 — 각 스킬 폴더(`skills/easyproduct-*`)를
 > 통째로 zip으로 묶은 뒤 확장자를 `.zip` → `.skill`로 바꾸면 업로드용 파일이 됩니다.
 
-**Claude Code**: 이 저장소를 클론한 뒤 각 스킬 폴더를 `.claude/skills/`(프로젝트 전용) 또는
-`~/.claude/skills/`(전역)에 복사합니다. Claude Code는 실제 파일시스템 위에서 동작하므로,
-스킬이 만든 문서는 작업 중인 프로젝트 폴더에 그대로 파일로 저장되고 세션이 끝나도 남습니다.
+**Claude Code**: 이 저장소를 클론한 뒤 각 스킬 폴더를 전역 스킬 폴더 또는 프로젝트 전용 폴더에
+복사합니다. Claude Code는 실제 파일시스템 위에서 동작하므로, 스킬이 만든 문서는 작업 중인 프로젝트
+폴더에 그대로 파일로 저장되고 세션이 끝나도 남습니다.
+
+- **전역 스킬 폴더** — macOS/Linux는 `~/.claude/skills/`, Windows는 `%USERPROFILE%\.claude\skills\`
+  (= `C:\Users\<사용자명>\.claude\skills\`). 어느 프로젝트에서든 쓰입니다.
+- **프로젝트 전용** — 작업 폴더 안의 `.claude/skills/`. 그 프로젝트에서만 쓰입니다.
+
+**macOS / Linux (bash):**
 
 ```bash
 git clone https://github.com/doocubii/easyproduct.git
 # 각 스킬 폴더(easyproduct-suite, easyproduct-doc-builder 등)를 아래 위치로 복사
-cp -r easyproduct/<스킬-폴더명> ~/.claude/skills/   # 전역 설치
-# 또는 cp -r easyproduct/<스킬-폴더명> ./.claude/skills/   # 프로젝트 전용 설치
+cp -r easyproduct/skills/<스킬-폴더명> ~/.claude/skills/       # 전역 설치
+# 또는  cp -r easyproduct/skills/<스킬-폴더명> ./.claude/skills/   # 프로젝트 전용 설치
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/doocubii/easyproduct.git
+# 전역 스킬 폴더가 없으면 한 번 만든다
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills" | Out-Null
+# 각 스킬 폴더를 전역에 복사 (스킬마다 반복, 또는 skills\* 로 전체 복사)
+Copy-Item -Recurse -Force ".\easyproduct\skills\<스킬-폴더명>" "$env:USERPROFILE\.claude\skills\"
+# 또는 프로젝트 전용으로 복사
+Copy-Item -Recurse -Force ".\easyproduct\skills\<스킬-폴더명>" ".\.claude\skills\"
+
+# 8개 스킬을 전역에 한 번에 복사하려면:
+Copy-Item -Recurse -Force ".\easyproduct\skills\*" "$env:USERPROFILE\.claude\skills\"
+```
+
+> 세트로 쓰려면 `easyproduct-suite`를 포함해 8개 폴더를 모두 복사하세요. 복사 후 새 Claude Code
+> 세션을 시작하면 스킬이 인식됩니다.
 
 ## 사용 예시
 
