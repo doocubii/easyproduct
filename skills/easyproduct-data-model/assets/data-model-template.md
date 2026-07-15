@@ -9,6 +9,11 @@
 > - 필드를 삭제하거나 이름을 바꾸면, 그 변수를 쓰는 화면·코드 전체를 함께 갱신한다.
 > - 새 그룹(덩어리) 추가는 정보 구조를 바꾸는 일이니 신중히 판단한다. 되도록 기존 그룹 안에서 해결한다.
 > - 애매하면 임의로 만들지 말고 기존 규칙(공통 관리 필드·표준 프리셋)을 참고해 일관되게 정한다.
+>
+> **각 그룹 표 바로 아래에는 그 그룹 구조를 담은 JSON 블록**이 있습니다(소프트웨어가 바로 읽도록).
+> **표가 원본(SSOT)이고 JSON은 그 미러**입니다 — 표를 고치면 JSON을 다시 생성해 맞추고, **JSON을 손으로 고치지 않습니다.**
+> JSON 표기 규칙: 타입은 영문(`string`/`number`/`datetime`/`date`/`boolean`/`list`/`image`),
+> `source`는 `auto:managed`/`auto:preset`/`user`, 필드명은 그룹 상단 `group` + 짧은 `name`(전체 변수는 `그룹.name`).
 
 ---
 
@@ -38,6 +43,25 @@
 
 **관계**: 회원 한 명은 요청(`request`)을 여러 개 만들 수 있다.
 
+```json
+{
+  "group": "user",
+  "label": "회원",
+  "description": "이 서비스에 가입한 사용자.",
+  "fields": [
+    { "name": "id",        "label": "회원의 고유 번호", "type": "string",   "required": true,  "source": "auto:managed", "usedIn": [],                     "description": "회원을 구별하는 고유 식별값" },
+    { "name": "createdAt", "label": "회원의 가입 일시", "type": "datetime", "required": true,  "source": "auto:managed", "usedIn": [],                     "description": "데이터가 처음 만들어진 시각" },
+    { "name": "updatedAt", "label": "회원의 수정 일시", "type": "datetime", "required": true,  "source": "auto:managed", "usedIn": [],                     "description": "데이터가 마지막으로 바뀐 시각" },
+    { "name": "status",    "label": "회원의 상태",     "type": "string",   "required": true,  "source": "auto:managed", "usedIn": [],                     "description": "활성/정지/탈퇴 등" },
+    { "name": "email",     "label": "회원의 이메일",   "type": "string",   "required": true,  "source": "auto:preset",  "usedIn": ["로그인", "회원가입"], "description": "로그인·연락에 쓰는 이메일" },
+    { "name": "nickname",  "label": "회원의 닉네임",   "type": "string",   "required": false, "source": "auto:preset",  "usedIn": ["프로필"],             "description": "다른 사용자에게 보이는 이름" }
+  ],
+  "relations": [
+    { "type": "hasMany", "target": "request", "description": "회원 한 명은 요청을 여러 개 만들 수 있다." }
+  ]
+}
+```
+
 ---
 
 ## 요청 (`request`)
@@ -53,6 +77,24 @@
 | `request.applicantCount` | 요청의 지원자 수 | 숫자 | 선택 | 이 요청에 지원한 사람 수 | 요청 상세 | 사용자 |
 
 **관계**: 요청 하나는 회원(`user`) 한 명에게 속한다.
+
+```json
+{
+  "group": "request",
+  "label": "요청",
+  "description": "회원이 올리는 요청.",
+  "fields": [
+    { "name": "id",             "label": "요청의 고유 번호", "type": "string",   "required": true,  "source": "auto:managed", "usedIn": [],                       "description": "요청을 구별하는 고유 식별값" },
+    { "name": "createdAt",      "label": "요청의 등록 일시", "type": "datetime", "required": true,  "source": "auto:managed", "usedIn": [],                       "description": "요청이 처음 만들어진 시각" },
+    { "name": "updatedAt",      "label": "요청의 수정 일시", "type": "datetime", "required": true,  "source": "auto:managed", "usedIn": [],                       "description": "요청이 마지막으로 바뀐 시각" },
+    { "name": "title",          "label": "요청의 제목",     "type": "string",   "required": true,  "source": "user",         "usedIn": ["요청 목록", "요청 상세"], "description": "목록에 보이는 제목" },
+    { "name": "applicantCount", "label": "요청의 지원자 수", "type": "number",   "required": false, "source": "user",         "usedIn": ["요청 상세"],            "description": "이 요청에 지원한 사람 수" }
+  ],
+  "relations": [
+    { "type": "belongsTo", "target": "user", "description": "요청 하나는 회원 한 명에게 속한다." }
+  ]
+}
+```
 
 ---
 
