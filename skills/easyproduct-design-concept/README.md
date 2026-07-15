@@ -38,7 +38,7 @@
 - 확정된 컨셉은 easyproduct-screen-design(화면 설계서)이 각 화면을 그릴 때의 겉모습·느낌 기준이 된다.
 
 ## 버전
-- easyproduct 세트 `0.1.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.2.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.
