@@ -25,8 +25,29 @@ if [ ! -d "$SRC_DIR" ]; then
   exit 1
 fi
 
+# SKILL.md 메타 블록의 버전(백틱으로 감싼 X.Y.Z)을 읽는다(하드코딩 없음, 파일당 하나뿐).
+read_version() {
+  [ -f "$1" ] || { echo ""; return; }
+  grep -oE '`[0-9]+\.[0-9]+\.[0-9]+`' "$1" | head -1 | tr -d '`'
+}
+
+# 버전 기준 스킬은 easyproduct-suite(항상 존재).
+CUR_VER="$(read_version "$SRC_DIR/easyproduct-suite/SKILL.md")"
+OLD_VER="$(read_version "$DEST/easyproduct-suite/SKILL.md")"   # 덮어쓰기 전에 읽는다.
+
 echo "설치 원본 : $SRC_DIR"
 echo "설치 위치 : $DEST"
+echo "설치할 버전   : ${CUR_VER:-알 수 없음}"
+if [ -n "$OLD_VER" ]; then
+  echo "기존 설치 버전 : $OLD_VER"
+  if [ "$OLD_VER" = "$CUR_VER" ]; then
+    echo "                (같은 버전 재설치)"
+  else
+    echo "                ($OLD_VER → ${CUR_VER:-?} 로 갱신)"
+  fi
+else
+  echo "기존 설치 버전 : 없음 (신규 설치)"
+fi
 
 # .claude/skills 가 없으면 만든다.
 mkdir -p "$DEST"

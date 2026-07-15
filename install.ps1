@@ -1,4 +1,4 @@
-<#
+﻿<#
   easyproduct 스킬 설치 스크립트 (Windows PowerShell)
 
   사용법:
@@ -25,8 +25,33 @@ if (-not (Test-Path -LiteralPath $SrcDir)) {
   exit 1
 }
 
+# SKILL.md 메타 블록의 버전(백틱으로 감싼 X.Y.Z)을 읽는다(하드코딩 없음, 파일당 하나뿐).
+# 한글에 의존하지 않는 ASCII 패턴이라 인코딩과 무관하게 동작한다.
+function Read-SkillVersion([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path)) { return $null }
+  $raw = Get-Content -LiteralPath $Path -Raw
+  $m = [regex]::Match($raw, '`([0-9]+\.[0-9]+\.[0-9]+)`')
+  if ($m.Success) { return $m.Groups[1].Value }
+  return $null
+}
+
+# 버전 기준 스킬은 easyproduct-suite(항상 존재).
+$CurVer = Read-SkillVersion (Join-Path $SrcDir "easyproduct-suite\SKILL.md")
+$OldVer = Read-SkillVersion (Join-Path $Dest "easyproduct-suite\SKILL.md")   # 덮어쓰기 전에 읽는다.
+
 Write-Host "설치 원본 : $SrcDir"
 Write-Host "설치 위치 : $Dest"
+Write-Host "설치할 버전   : $(if ($CurVer) { $CurVer } else { '알 수 없음' })"
+if ($OldVer) {
+  Write-Host "기존 설치 버전 : $OldVer"
+  if ($OldVer -eq $CurVer) {
+    Write-Host "                (같은 버전 재설치)"
+  } else {
+    Write-Host "                ($OldVer -> $(if ($CurVer) { $CurVer } else { '?' }) 로 갱신)"
+  }
+} else {
+  Write-Host "기존 설치 버전 : 없음 (신규 설치)"
+}
 
 # .claude\skills 가 없으면 만든다.
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
