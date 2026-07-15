@@ -47,7 +47,7 @@
 
 ## 버전
 
-- easyproduct 세트 `0.1.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.2.2`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 
