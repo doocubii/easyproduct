@@ -98,6 +98,26 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
   (= `C:\Users\<사용자명>\.claude\skills\`). 어느 프로젝트에서든 쓰입니다.
 - **프로젝트 전용** — 작업 폴더 안의 `.claude/skills/`. 그 프로젝트에서만 쓰입니다.
 
+**간편 설치 스크립트 (권장):** 저장소 루트의 설치 스크립트가 8개 스킬을 한 번에 복사합니다.
+`.claude/skills` 폴더가 없으면 만들어 주고, 이미 있는 스킬은 최신 내용으로 갱신합니다.
+
+```bash
+git clone https://github.com/doocubii/easyproduct.git
+cd easyproduct
+
+# macOS / Linux / Git Bash — 기본은 ~/.claude/skills 에 설치(전역)
+./install.sh
+./install.sh /path/to/project     # 특정 폴더에 설치 → <폴더>/.claude/skills
+```
+
+```powershell
+# Windows PowerShell — 기본은 %USERPROFILE%\.claude\skills 에 설치(전역)
+.\install.ps1
+.\install.ps1 -Base C:\path\to\project   # 특정 폴더에 설치 → <폴더>\.claude\skills
+```
+
+아래는 스크립트 없이 **손으로 복사**하는 방법입니다.
+
 **macOS / Linux (bash):**
 
 ```bash
