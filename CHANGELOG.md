@@ -8,9 +8,10 @@
 
 ---
 
-## [Unreleased]
+## [0.2.1] — 2026-07-15 (beta)
 
-> `beta` 머지 시 버전 번호와 beta 머지일이 확정된다.
+> 상태: `beta` 머지로 **버전 0.2.1 확정**, 릴리즈 날짜 = beta 머지일(2026-07-15).
+> 릴리즈 날짜는 단일 필드이며, `main` 머지(정식 릴리즈) 시 그 날짜로 갱신된다.
 
 ### Added (추가)
 - **설치 스크립트** `install.sh`(bash) · `install.ps1`(PowerShell) — 8개 스킬을 한 번에 전역(`~/.claude/skills`) 또는 지정 폴더(`<폴더>/.claude/skills`)에 설치/갱신. `.claude/skills`가 없으면 생성. README 설치 안내에 반영.
