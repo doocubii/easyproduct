@@ -1,3 +1,16 @@
+---
+doc_type: doc-bundle-index
+doc_id: [프로젝트-slug]
+title: "개발 문서 묶음 안내: [프로젝트 이름]"
+version: 1
+ssot: table                 # 위 문서 목록 표가 원본, docs 블록은 파생 매니페스트
+machine:
+  lang: json
+  tag: docbundle.docs       # 이 info-string 블록이 '공식 기계 표현'(문서 매니페스트)
+  item: doc-list
+  schema: ./schemas/docbundle.v1.schema.json
+---
+
 # 개발 문서 묶음 안내: [프로젝트 이름]
 
 > **생성 시각: [YYYY-MM-DD]** 기준 스냅샷입니다.
@@ -62,6 +75,35 @@
 | (옵트인) **spec-kit 인계 안내문 — 백오피스** | 백오피스 프로젝트분 인계장(화면 설계서가 둘 다 있을 때만). 마찬가지로 전달만 하고 폴더에 편입 안 함 | `speckit-handoff-backoffice.md` (전달됨) |
 
 > 디자인 3안 비교(HTML/PNG)는 `reference/design-preview/`에, 화면 목업(HTML)은 `temp/mockups/{scope}/`에 있습니다(둘 다 참조용·파생물이지만, 전자는 보존하고 후자는 버려도 됩니다 — 아래 "폴더 구조 한눈에" 참고).
+
+## (기계 표현) 문서 매니페스트
+
+위 문서 목록을 **소프트웨어가 읽는 사본**으로 옮긴 것입니다. 위 표(사람용)가 원본이고, 세트 구성이 바뀌면 이 블록도 다시 만듭니다. 하네스는 이 **한 블록**에서 세트의 모든 문서·타입·경로를 발견하고, 각 경로로 가 그 문서의 봉투가 맞는지 대조할 수 있습니다.
+
+```json docbundle.docs
+{
+  "docs": [
+    { "docType": "plan",           "path": "ssot/plan.md",           "role": "ssot" },
+    { "docType": "design-doc",     "path": "ssot/design-spec.md",    "role": "ssot" },
+    { "docType": "ia",             "path": "ssot/ia.md",             "role": "ssot" },
+    { "docType": "data-model",     "path": "ssot/data-model.md",     "role": "ssot" },
+    { "docType": "design-concept", "path": "ssot/design-concept.md", "role": "ssot" },
+    { "docType": "policy",         "path": "ssot/policy.md",         "role": "ssot", "optional": true },
+    { "docType": "terms-privacy",  "path": "ssot/terms-privacy.md",  "role": "ssot", "optional": true }
+  ]
+}
+```
+
+- `docType` = 그 문서의 봉투 `doc_type`, `path` = 세트 루트 기준 경로, `role` = ssot/supporting/reference/handoff.
+- 위 예시는 기본 구성입니다 — 실제로는 **이 세트에 실제로 만들어진 문서 전부**(옵트인·화면 설계서·시나리오 등 포함)를 담습니다.
+
+### 이 블록으로 소프트웨어가 자동 점검할 수 있는 것
+
+이 매니페스트는 사람이 아니라 소프트웨어가 읽는 사본이라, 아래를 자동으로 확인할 수 있습니다(직접 하실 일은 아니고, 참고용입니다).
+
+- **문서 발견** — 세트의 모든 문서·타입·경로를 이 한 블록에서 찾는다(폴더를 헤맬 필요 없음).
+- **경로·봉투 대조** — 각 `path`의 파일이 실제로 있는지, 그 파일의 봉투 `doc_type`이 여기 적힌 `docType`과 맞는지.
+- **세트 전역 점검의 진입점** — 여기서 각 문서로 들어가, 문서마다의 기계 블록(FEAT·DATA·POL·UI·토큰)과 크로스도큐먼트 참조를 한 번에 점검한다.
 
 ## 읽는 순서 (권장)
 1. **기획서** — 이 서비스가 무엇인지 먼저 잡는다.
