@@ -90,13 +90,11 @@
 
 ## 참조 구현 · 사용법
 
-이 계약서대로 동작하는 **무의존 참조 점검기**가 저장소에 있다: **`tools/check-docs.mjs`** (Node.js, npm 의존성 없음).
+이 계약서대로 동작하는 **무의존 참조 점검기**가 suite 스킬 안에 있다: **`scripts/check-docs.mjs`** (Node.js, npm 의존성 없음). 스킬 설치 시 함께 깔린다.
 
-```
-node tools/check-docs.mjs <문서세트-루트>
-```
-
-- `<루트>/00-index.md`의 `docbundle.docs` 매니페스트가 있으면 그걸로 문서를 발견, 없으면 `*.md`를 스캔.
+- **누가 실행하나**: **suite 스킬이 직접 실행한다**(Stage 4 기계 점검). node를 쓸 수 있는 환경(Claude Code 등)에서 `node <스킬>/scripts/check-docs.mjs <문서세트-루트>`로 돌린다. node를 못 쓰는 환경이면 위 "점검자 알고리즘"대로 읽어서 점검하거나 건너뛴다.
+- **프로젝트로 복사되지 않는다**: 생성된 문서 세트엔 문서 + `schemas/*.json`만 나간다. 점검기는 suite가 들고 실행하는 자산이다.
+- **소스가 필요하면**: 사용자가 점검기 코드를 원하면(자기 CI·하네스에 넣으려고 등) suite가 이 파일을 **보여주거나 내려준다.**
 - 하는 일: frontmatter·doc_type 확인 → 기계 블록을 `machine.schema`로 검증 → 접두사 라우팅으로 크로스도큐먼트 참조 무결성(죽은 링크) 점검. 문제가 있으면 종료코드 1.
 - 이 점검기는 위 스키마 부분집합(type·required·enum·const·pattern·minItems·minProperties·properties·items·additionalProperties)만 구현한다. **완전한 JSON Schema 준수가 필요하면 `ajv`로 교체**하면 된다(스키마 파일은 그대로 재사용).
 

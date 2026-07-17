@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 // easyproduct 문서 세트 점검기 (무의존 참조 구현)
-// 규약: skills/easyproduct-suite/references/checker-guide.md
+// 규약: easyproduct-suite/references/checker-guide.md
 //
-// 사용법:  node tools/check-docs.mjs <문서세트-루트>
+// 이 스크립트는 easyproduct-suite 스킬의 자산이다(스킬 설치 시 함께 깔린다).
+// suite 스킬이 문서 세트를 점검할 때(Stage 4) 직접 실행한다. 프로젝트 폴더로 복사되지는 않는다.
+// (사용자가 소스를 원하면 suite가 이 파일을 보여주거나 내려준다.)
+//
+// 사용법:  node <이 파일 경로> <문서세트-루트>
 //   - <루트>/00-index.md 의 docbundle.docs 매니페스트가 있으면 그걸로 문서를 발견
 //   - 없으면 <루트> 아래 *.md 를 훑는다
 // 하는 일: frontmatter 확인 → 기계 블록을 machine.schema 로 검증 →
