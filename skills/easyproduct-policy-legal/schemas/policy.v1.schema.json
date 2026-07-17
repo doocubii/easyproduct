@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/policy.v1.schema.json",
+  "title": "EasyProduct 서비스 정책서 — 규칙 인덱스 블록 (payload v1)",
+  "description": "정책서의 POL.* 규칙 목록을 기계가 읽는 사본. 규칙 문장(사람용)이 원본이고 이 블록은 ID 인덱스. 다른 문서(시나리오 등)가 규칙을 ID로 참조·조회한다. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["rules"],
+  "additionalProperties": true,
+  "properties": {
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "label"],
+        "additionalProperties": true,
+        "properties": {
+          "id":     { "type": "string", "pattern": "^POL\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "규칙 anchor. POL.<도메인>.<규칙명>." },
+          "label":  { "type": "string", "description": "사람이 보는 규칙 이름." },
+          "domain": { "type": "string", "description": "규칙 도메인(member/content/payment/report/noshow/location/dispute 등)." }
+        }
+      }
+    }
+  }
+}
