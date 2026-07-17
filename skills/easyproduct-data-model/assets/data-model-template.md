@@ -1,3 +1,17 @@
+---
+doc_type: data-model
+doc_id: [서비스-slug]
+title: "데이터 모델: [서비스 이름]"
+version: 1
+ssot: table                 # 원본은 표, JSON 블록은 파생 미러
+machine:
+  lang: json
+  tag: datamodel.group      # 이 info-string을 가진 코드블록이 '공식 기계 표현'
+  item: group               # 블록 1개 = 데이터 그룹 1개
+  schema: ./schemas/data-model.v1.schema.json
+  namespace: DATA           # 그룹 anchor는 DATA.<group> (크로스도큐먼트 참조용)
+---
+
 # 데이터 모델: [서비스 이름]
 
 > 이 데이터 모델은 데이터(정보 항목·이름·구조)에 관해 기획서를 포함한 다른 어떤 문서보다
@@ -12,8 +26,10 @@
 >
 > **각 그룹 표 바로 아래에는 그 그룹 구조를 담은 JSON 블록**이 있습니다(소프트웨어가 바로 읽도록).
 > **표가 원본(SSOT)이고 JSON은 그 미러**입니다 — 표를 고치면 JSON을 다시 생성해 맞추고, **JSON을 손으로 고치지 않습니다.**
-> JSON 표기 규칙: 타입은 영문(`string`/`number`/`datetime`/`date`/`boolean`/`list`/`image`),
+> JSON 표기 규칙: 코드블록은 ` ```json datamodel.group `으로 태깅하고, 각 블록 맨 위에 그룹 anchor `"id": "DATA.<group>"`를 둔다.
+> 타입은 영문(`string`/`number`/`datetime`/`date`/`boolean`/`list`/`image`),
 > `source`는 `auto:managed`/`auto:preset`/`user`, 필드명은 그룹 상단 `group` + 짧은 `name`(전체 변수는 `그룹.name`).
+> 다른 문서는 이 그룹을 `DATA.<group>`으로, 필드를 `<group>.<name>`으로 참조한다.
 
 ---
 
@@ -43,8 +59,9 @@
 
 **관계**: 회원 한 명은 요청(`request`)을 여러 개 만들 수 있다.
 
-```json
+```json datamodel.group
 {
+  "id": "DATA.user",
   "group": "user",
   "label": "회원",
   "description": "이 서비스에 가입한 사용자.",
@@ -78,8 +95,9 @@
 
 **관계**: 요청 하나는 회원(`user`) 한 명에게 속한다.
 
-```json
+```json datamodel.group
 {
+  "id": "DATA.request",
   "group": "request",
   "label": "요청",
   "description": "회원이 올리는 요청.",
