@@ -179,6 +179,7 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 
 - **봉투가 없으면** 맨 앞에 frontmatter(`doc_type`/`version`/`ssot`/`machine.*`)를 얹고, `schemas/data-model.v1.schema.json`을 산출물 옆에 복사한다.
 - **JSON 미러가 없거나 태그가 없으면** 각 그룹 표 아래에 ` ```json datamodel.group ` 태그 블록을 표에서 생성해 넣고(맨 위 `"id": "DATA.<group>"`), 기존 블록은 태그·`id`를 보강한다.
+- **"소프트웨어(하네스)가 이 기계 블록으로 점검할 수 있는 것" 설명 절이 없으면** 템플릿과 같은 위치(SSOT 문구 아래)에 채워 넣는다.
 - 표에서 기계적으로 변환해 넣을 뿐이다("JSON 미러" 스키마·매핑대로). 일부 그룹만 JSON이 있으면 빠진 그룹만 채운다.
 
 ---
