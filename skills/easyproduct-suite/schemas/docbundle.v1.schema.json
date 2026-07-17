@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/docbundle.v1.schema.json",
+  "title": "EasyProduct 문서 묶음 인덱스 — 문서 매니페스트 블록 (payload v1)",
+  "description": "문서 세트에 어떤 문서가 어디에 있는지 기계가 읽는 매니페스트. 하네스가 이 한 블록에서 모든 문서·타입·경로를 발견하고, 각 경로의 봉투 doc_type을 대조한다. 사람용 표가 원본이고 이 블록은 그 미러. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["docs"],
+  "additionalProperties": true,
+  "properties": {
+    "docs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["docType", "path"],
+        "additionalProperties": true,
+        "properties": {
+          "docType": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "그 문서의 봉투 doc_type(예: ia, data-model, policy)." },
+          "path":    { "type": "string", "description": "세트 루트 기준 상대 경로(예: ssot/ia.md)." },
+          "role":    { "enum": ["ssot", "supporting", "reference", "handoff"], "description": "문서 역할(선택)." },
+          "optional":{ "type": "boolean", "description": "옵트인/선택 문서 여부(선택)." }
+        }
+      }
+    }
+  }
+}
