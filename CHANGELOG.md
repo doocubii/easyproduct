@@ -8,6 +8,28 @@
 
 ---
 
+## [0.3.0] — 2026-07-18 (beta)
+
+> 상태: `beta` 머지로 **버전 0.3.0 확정**, 릴리즈 날짜 = beta 머지일(2026-07-18).
+> 릴리즈 날짜는 단일 필드이며, `main` 머지(정식 릴리즈) 시 그 날짜로 갱신된다.
+
+### Added (추가)
+- **문서 기계 판독 층 도입** — 각 스킬 산출 문서를 "사람용 + 기계용 2층"으로 확장. 소프트웨어(하네스·CI)가 규약으로 스펙을 조회·점검할 수 있다.
+  - 문서 맨 앞 **frontmatter**(`doc_type`·`version`·`ssot`·`machine.*`)로 문서 종류와 기계 블록 위치·검증 계약을 선언.
+  - 태그된 **기계 블록**: 데이터 모델 `datamodel.group`(`DATA.*`), IA `ia.features`(`FEAT.*`), 정책서 `policy.rules`(`POL.*`), 화면 설계 `screendesign.screens` + 인벤토리 `uicomponents.list`(`UI.*`), 디자인 컨셉 `design.tokens`, 시나리오 `scenario.trace`(`SCN.*`), 문서 묶음 색인 `docbundle.docs`(세트 매니페스트).
+  - 기획서·설계서·유저 스토리는 상위 요구 문서라 **frontmatter(식별)만** 두고 기계 블록은 없음(그 내용의 ID는 하위 문서가 확정).
+- **payload 스키마**(`schemas/*.v1.schema.json`) — 각 기계 블록의 JSON Schema 계약. 스킬 소유 고정 자산을 산출물 옆 `schemas/`에 버전 핀으로 복사.
+- **크로스도큐먼트 참조 네임스페이스** — 접두사(`FEAT./DATA./POL./UI./SCN./token`)가 곧 "어느 등기부에서 조회할지"의 타입 표시. 문서 간 참조 무결성(죽은 링크)을 기계가 점검.
+- **세트 전역 기계 점검 게이트**(suite Stage 4) — 시나리오 유무와 무관하게 각 문서의 스키마 검증 + 크로스도큐먼트 참조 무결성을 점검.
+- **점검자 개발 가이드** `easyproduct-suite/references/checker-guide.md` — frontmatter 필드 의미·doc_type/anchor 레지스트리·참조 라우팅·점검자 알고리즘.
+- **무의존 참조 점검기** `easyproduct-suite/scripts/check-docs.mjs`(Node) — suite가 문서 세트에 겨눠 실행. 프로젝트로 복사하지 않고 소스는 요청 시 제공.
+- 각 스킬에 **옛 문서 gap-fill 업그레이드 경로** — frontmatter·기계 블록·스키마가 없는 기존 문서를 표·산문은 그대로 두고 기계층만 보강.
+
+### Changed (변경)
+- "봉투" 표기를 md 생태계 표준어 **frontmatter**로 통일(YAML 키·블록·스키마는 불변).
+
+---
+
 ## [0.2.2] — 2026-07-15 (beta)
 
 > 상태: `beta` 머지로 **버전 0.2.2 확정**, 릴리즈 날짜 = beta 머지일(2026-07-15).
