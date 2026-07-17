@@ -149,7 +149,7 @@ description: |
 
 애매하면 (가)로 기울지 말고 사용자 표현을 본다: **안 번호를 말하면 (가), 색·느낌·방향을 말하면 (나).**
 
-**(다) 버전업 gap-fill** — 봉투나 ` ```json design.tokens ` 블록이 없는 옛 컨셉 문서를 받으면(세트가 "구조 동기화"로 부르거나 사용자가 요청), 안 내용은 그대로 두고 기계층만 보강한다: 맨 앞에 봉투를 얹고, **선택된 안**의 색·모서리·여백·타이포 값을 모아 토큰 블록을 만들고, `schemas/design.v1.schema.json`을 산출물 옆에 복사하고, "자동 점검할 수 있는 것" 설명 절이 없으면 채운다.
+**(다) 버전업 gap-fill** — frontmatter나 ` ```json design.tokens ` 블록이 없는 옛 컨셉 문서를 받으면(세트가 "구조 동기화"로 부르거나 사용자가 요청), 안 내용은 그대로 두고 기계층만 보강한다: 맨 앞에 frontmatter를 얹고, **선택된 안**의 색·모서리·여백·타이포 값을 모아 토큰 블록을 만들고, `schemas/design.v1.schema.json`을 산출물 옆에 복사하고, "자동 점검할 수 있는 것" 설명 절이 없으면 채운다.
 
 ## Step 4: 마무리 — 반드시 파일로 만든다
 
@@ -163,7 +163,7 @@ description: |
    - 맨 앞 **"선택된 안"**에 지금 채택된 안 번호(기본 1안)와 추천 이유 한두 줄을 적는다. **선택은 이 한 곳에만 기록**한다 — 나중에 안을 바꾸면 여기만 고치면 된다.
    - 문서에 **"샘플 페이지는 선택을 돕기 위한 임시 참고물이며, 개발의 표준·근거는 이 컨셉 문서의 값이지 샘플 화면의 레이아웃이 아니다"**를 명시한다. (템플릿에 이 문구 자리가 있다.)
    - 기본은 **마크다운(.md)**. 원하면 Word(.docx)로도. 파일 이름 예: `디자인컨셉-[프로젝트이름].md`
-   - **봉투(frontmatter) + 디자인 토큰 블록.** 맨 앞에 봉투(`doc_type: design-concept`·`version`·`ssot: prose`·`machine.{tag: design.tokens, schema, namespace: token}`)를 두고, 문서 하단에 ` ```json design.tokens ` 블록으로 **선택된 안의** 색·모서리·여백·타이포 토큰을 담는다(안별 정의가 원본, 이 블록은 선택된 안의 미러 — 선택이 바뀌면 그 안의 값으로 다시 만든다). `schemas/design.v1.schema.json`을 산출물 옆 `schemas/`에 복사한다. 이 블록으로 화면 설계서·UI 인벤토리의 토큰 참조(`color.primary`·`spacing.md` 등)를 소프트웨어가 자동 조회한다.
+   - **frontmatter + 디자인 토큰 블록.** 맨 앞에 frontmatter(`doc_type: design-concept`·`version`·`ssot: prose`·`machine.{tag: design.tokens, schema, namespace: token}`)를 두고, 문서 하단에 ` ```json design.tokens ` 블록으로 **선택된 안의** 색·모서리·여백·타이포 토큰을 담는다(안별 정의가 원본, 이 블록은 선택된 안의 미러 — 선택이 바뀌면 그 안의 값으로 다시 만든다). `schemas/design.v1.schema.json`을 산출물 옆 `schemas/`에 복사한다. 이 블록으로 화면 설계서·UI 인벤토리의 토큰 참조(`color.primary`·`spacing.md` 등)를 소프트웨어가 자동 조회한다.
 2. **3안 미리보기 (필수, 임시 참고물)** — 세 안 각각에 대해 **UI 키트 + 샘플 페이지**를 만든다. 코드만으로는 비전문가가 비교 못 하므로 실제로 그려진 걸 준다.
    - 각 안: `안{n}-{이름}-키트.html` / `안{n}-{이름}-샘플.html` + 각 HTML을 변환한 **PNG**.
    - 세 안을 한눈에 비교하는 **표지 HTML**(`디자인안-비교.html`)도 만들어 PNG·핵심 색을 나란히 건다.

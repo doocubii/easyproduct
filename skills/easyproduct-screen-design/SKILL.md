@@ -344,12 +344,12 @@ temp/mockups/{scope}/
 └── 화면-[이름]-목업.html                 ← 선택적·참고물 (백오피스는 "관리자" 표기, .gitignore 대상, 재생성 가능)
 ```
 
-> **봉투·기계 블록·스키마(기계 점검 층).** 도메인 파일과 인벤토리 파일은 각각 맨 앞에 봉투(frontmatter)를 두고,
+> **frontmatter·기계 블록·스키마(기계 점검 층).** 도메인 파일과 인벤토리 파일은 각각 맨 앞에 frontmatter를 두고,
 > 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `(각 화면의 `id`·`feat`·`components`·`data`),
 > 인벤토리는 ` ```json uicomponents.list `(컴포넌트 `id`·`scope`). 글 정의·인벤토리 정의가 원본이고 이 블록들은 파생 미러다.
 > 각 스키마(`schemas/screen-design.v1.schema.json`·`schemas/ui-components.v1.schema.json`)를 스킬 자산에서 위 위치(`screens/{scope}/schemas/`·`ssot/schemas/`)로 복사한다.
 > 이 블록들로 소프트웨어가 화면↔기능(IA)↔컴포넌트(인벤토리)↔데이터(모델) 참조를 자동 점검한다.
-> (index 파일은 링크 허브라 기계 블록을 두지 않는다 — 봉투만 `doc_type: screen-design-index`로.)
+> (index 파일은 링크 허브라 기계 블록을 두지 않는다 — frontmatter만 `doc_type: screen-design-index`로.)
 
 규칙:
 - **도메인 단위 분리**: 화면설계서를 하나의 파일에 다 담지 않는다. FEAT 도메인마다 `screen-design-{scope}-{domain}.md`.
@@ -391,8 +391,8 @@ temp/mockups/{scope}/
    비교해 실제로 빠진 것을 찾는 일반 절차**로 수행한다(향후 또 바뀌어도 재사용). 이번 개편 기준 흔한 gap 예: 하나의 파일을
    **도메인별로 분리** + index, **UI 컴포넌트 인벤토리**(중앙/로컬), "보이는 것"의 **명세 형식**(컴포넌트·배치·문구 고정),
    **긴 텍스트 처리 표준**, 목업의 **temp 경로**, 화면·도메인의 **사이트맵 순서**, 화면별 "로그인 필요" 필드,
-   **맨 앞 봉투(frontmatter), 하단 기계 블록(도메인=`screendesign.screens`·인벤토리=`uicomponents.list`), 옆 `schemas/*.json`, "자동 점검할 수 있는 것" 설명 절** 등.
-   봉투가 없으면 얹고, 기계 블록이 없으면 글 정의·인벤토리에서 화면·컴포넌트 ID를 모아 만들고, 스키마 파일이 없으면 복사한다.
+   **맨 앞 frontmatter, 하단 기계 블록(도메인=`screendesign.screens`·인벤토리=`uicomponents.list`), 옆 `schemas/*.json`, "자동 점검할 수 있는 것" 설명 절** 등.
+   frontmatter가 없으면 얹고, 기계 블록이 없으면 글 정의·인벤토리에서 화면·컴포넌트 ID를 모아 만들고, 스키마 파일이 없으면 복사한다.
 3. **빠진 부분만 채운다.** 채울 때 그 항목을 새로 만들 때 이 스킬이 쓰는 **자동 판단 기준**을 그대로 적용하고, 매번 묻지
    않고 **"자동으로 정한 것"으로 표시**한다.
 4. **이미 있는 내용은 절대 다시 쓰거나 고치지 않는다.** 순수 "빠진 것만 추가". 기존 글 정의·데이터·목업·레이아웃·ID는 글자 하나 안 건드린다.

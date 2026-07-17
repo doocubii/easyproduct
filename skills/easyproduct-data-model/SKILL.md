@@ -52,9 +52,9 @@ description: |
   구조는 `assets/data-model-template.md`를 따른다.
 - **`schemas/data-model.v1.schema.json`** — 그룹 JSON 미러의 검증 계약(JSON Schema). 스킬이 들고 있는
   **고정 자산을 산출물 옆 `schemas/`에 그대로 복사**한다(매번 새로 짓지 않는다). 버전을 파일명에 박으므로
-  v1으로 쓴 문서는 언제나 v1으로 검증된다. 문서 봉투의 `machine.schema`가 이 파일을 가리킨다.
+  v1으로 쓴 문서는 언제나 v1으로 검증된다. 문서 frontmatter의 `machine.schema`가 이 파일을 가리킨다.
 
-**문서 맨 앞에 봉투(frontmatter)를 둔다.** 점검 소프트웨어가 본문을 파싱하지 않고도 "이게 어떤 문서이고,
+**문서 맨 앞에 frontmatter를 둔다.** 점검 소프트웨어가 본문을 파싱하지 않고도 "이게 어떤 문서이고,
 기계 블록을 어디서·어떤 계약으로 찾는지"를 값싸게 알게 하는 규약이다(`assets/data-model-template.md`의
 frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot: table`,
 `machine.tag: datamodel.group`, `machine.schema`, `machine.namespace: DATA`.
@@ -155,7 +155,7 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
    - **종류별 표준 필드 프리셋**: 범위는 회원·거래계 핵심 5~7종(`user`, `payment`, `order`/`deal`, `review`, `report`, `notification` 정도). 프리셋에 없는 덩어리는 공통 관리 필드만 깔고 나머지는 비워 둔다.
 3. 각 필드는 **변수명·한글명(자연어)·종류·필수·설명·쓰이는 화면(선택)**을 갖는다. 자동으로 깐 건
    **"자동(관리)" / "자동(프리셋)"**으로 표시해 빼기 쉽게 한다.
-4. **데이터 모델 문서(md)를 만든다.** 맨 앞에 **봉투(frontmatter)**를 채우고("산출물 형식" 참고), 각 그룹 표를 채운 뒤
+4. **데이터 모델 문서(md)를 만든다.** 맨 앞에 **frontmatter**를 채우고("산출물 형식" 참고), 각 그룹 표를 채운 뒤
    **그 표 바로 아래에 태그된 JSON 미러 블록**(` ```json datamodel.group `, 맨 위 `"id": "DATA.<group>"`)을 표에서 생성해 넣는다("JSON 미러" 스키마·매핑 참고).
    **`schemas/data-model.v1.schema.json`을 산출물 옆 `schemas/`에 복사**한다(스킬 자산 그대로).
    초안을 한 번에 다 만든 뒤 사람이 문서로 보고, 고칠 것은 스킬에게 말해 반영하게 한다. (매 항목 컨펌받지 않는다.)
@@ -172,12 +172,12 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 - **표를 고치면 그 그룹의 JSON 미러를 다시 생성**해 표와 일치시킨다(JSON을 손으로 부분수정하지 않는다). 지정되지 않은 그룹의 표·JSON은 그대로 둔다.
 - **무엇을 어디서 고쳤는지 끝에 한두 줄로 통보**한다.
 
-### 버전업 — 봉투·태그·JSON 미러가 없는 옛 문서에 채워 넣기
+### 버전업 — frontmatter·태그·JSON 미러가 없는 옛 문서에 채워 넣기
 
-봉투(frontmatter)나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md를 받으면(또는 세트가 "구조 동기화"로 부르면),
+frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md를 받으면(또는 세트가 "구조 동기화"로 부르면),
 **표는 그대로 두고** 기계용 요소만 채운다(gap-fill). 표 내용을 바꾸거나 재작성하지 않는다:
 
-- **봉투가 없으면** 맨 앞에 frontmatter(`doc_type`/`version`/`ssot`/`machine.*`)를 얹고, `schemas/data-model.v1.schema.json`을 산출물 옆에 복사한다.
+- **frontmatter가 없으면** 맨 앞에 frontmatter(`doc_type`/`version`/`ssot`/`machine.*`)를 얹고, `schemas/data-model.v1.schema.json`을 산출물 옆에 복사한다.
 - **JSON 미러가 없거나 태그가 없으면** 각 그룹 표 아래에 ` ```json datamodel.group ` 태그 블록을 표에서 생성해 넣고(맨 위 `"id": "DATA.<group>"`), 기존 블록은 태그·`id`를 보강한다.
 - **"이 JSON 블록으로 소프트웨어가 자동 점검할 수 있는 것" 설명 절이 없으면** 템플릿과 같은 위치(문서 하단, "표시(source) 읽는 법" 아래)에 채워 넣는다.
 - 표에서 기계적으로 변환해 넣을 뿐이다("JSON 미러" 스키마·매핑대로). 일부 그룹만 JSON이 있으면 빠진 그룹만 채운다.
@@ -295,7 +295,7 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 - **중복 의심**: 종류·한글명·설명이 비슷한데 변수명이 다른 쌍 → "같은 것 아닌가요?" 확인.
 - **명명 규칙 위반**: `그룹.필드` 꼴 아님, 그룹 접두사 없는 전역 변수.
 - **anchor 형식**: JSON 미러의 `id`가 `DATA.<group>` 꼴인지, `group` 값과 일치하는지(`DATA.` + `group`).
-- **봉투·태그 누락**: frontmatter의 `machine.*`, 각 블록의 ` ```json datamodel.group ` 태그가 있는지.
+- **frontmatter·태그 누락**: frontmatter의 `machine.*`, 각 블록의 ` ```json datamodel.group ` 태그가 있는지.
 - **애매하면 지어내지 말고** 사용자에게 확인.
 
 ---
@@ -331,12 +331,12 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 ## 산출물·참고 자산
 
 산출물:
-- `데이터모델-[서비스].md` — **데이터 모델 문서이자 원본(SSOT).** 맨 앞 봉투(frontmatter) + 그룹별 표(원본) + 표 아래 태그된 JSON 미러를 함께 담는다. `assets/data-model-template.md` 구조를 채운다. (상시 산출물)
-- `schemas/data-model.v1.schema.json` — JSON 미러 검증 계약. 스킬 자산을 산출물 옆 `schemas/`에 그대로 복사한다. (상시 산출물, 문서 봉투의 `machine.schema`가 가리킴)
+- `데이터모델-[서비스].md` — **데이터 모델 문서이자 원본(SSOT).** 맨 앞 frontmatter + 그룹별 표(원본) + 표 아래 태그된 JSON 미러를 함께 담는다. `assets/data-model-template.md` 구조를 채운다. (상시 산출물)
+- `schemas/data-model.v1.schema.json` — JSON 미러 검증 계약. 스킬 자산을 산출물 옆 `schemas/`에 그대로 복사한다. (상시 산출물, 문서 frontmatter의 `machine.schema`가 가리킴)
 - `데이터모델-[서비스]-추출.json` — **요청 시에만** 인라인 미러들을 한 파일로 묶은 사본. [④ json 묶음 추출] 참고.
 
 참고 자산:
-- `assets/data-model-template.md` — 데이터 모델 문서(원본) 구조. 맨 앞 봉투 + SSOT·수정 원칙 문구 포함.
+- `assets/data-model-template.md` — 데이터 모델 문서(원본) 구조. 맨 앞 frontmatter + SSOT·수정 원칙 문구 포함.
 - `schemas/data-model.v1.schema.json` — 그룹 JSON 미러의 JSON Schema 계약(스킬 소유 원본, 산출물로 복사되는 고정 자산).
 - `references/standard-fields-preset.md` — 공통 관리 필드 + 회원·거래계 5~7종 표준 필드 지식베이스. 생성·등록 시 반드시 참고.
 
