@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/design.v1.schema.json",
+  "title": "EasyProduct 디자인 컨셉 — 디자인 토큰 블록 (payload v1)",
+  "description": "선택된 안의 디자인 토큰(색·모서리·여백·타이포)을 기계가 읽는 사본. 화면 설계서·UI 인벤토리가 이 토큰을 이름으로 참조한다. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["selected", "tokens"],
+  "additionalProperties": true,
+  "properties": {
+    "selected": { "type": "string", "description": "지금 선택된 안(예: \"1\"). 문서 상단 '선택된 안'과 일치." },
+    "tokens": {
+      "type": "object",
+      "required": ["color"],
+      "additionalProperties": true,
+      "properties": {
+        "color": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+          "description": "색 토큰. 값은 6자리 hex. 참조 형태 color.<이름>(예: color.primary)."
+        },
+        "radius":  { "type": "object", "additionalProperties": { "type": "string" }, "description": "모서리 토큰. 참조 radius.<이름>." },
+        "spacing": { "type": "object", "additionalProperties": { "type": "string" }, "description": "여백 척도 토큰. 참조 spacing.<이름>." },
+        "type":    { "type": "object", "additionalProperties": { "type": "string" }, "description": "타이포 위계 토큰. 참조 type.<이름>." }
+      }
+    }
+  }
+}
