@@ -1,4 +1,4 @@
-# frontmatter 계약서 — 점검자·하네스 개발 가이드
+# 점검자 개발 가이드 (checker-guide) — frontmatter·기계 블록 계약
 
 > **독자**: easyproduct 문서 세트를 **읽고 점검하는 소프트웨어(점검자·하네스·CI)를 만드는 개발자 또는 에이전트.**
 > 이 문서는 각 문서의 frontmatter와 기계 블록이 **무엇을 뜻하고, 점검자가 그 값으로 무엇을 해야 하는지**를 규정하는 단일 근거다.
@@ -80,6 +80,33 @@
 
 - 스키마는 각 문서 **옆 `./schemas/*.v1.schema.json`에 vendoring(복사)**된다. 스킬이 소유한 고정 자산의 사본이며, **버전이 파일명에 박혀 있어** v1 문서는 영원히 v1으로 검증된다(복사본이지만 drift 아님 — 얼어붙은 계약).
 - 계약을 바꿔야 하면 기존 파일을 고치지 말고 **새 버전(`v2`)**으로 낸다.
+
+## frontmatter 형식 (파싱 시 주의)
+
+이 세트의 frontmatter는 **YAML 블록 스타일의 통제된 부분집합**이다:
+- 최상위 `key: value` (문자열/정수) + `machine:` 아래 **2칸 들여쓰기 중첩**.
+- inline 플로우(`machine: {tag: ..., schema: ...}`)는 쓰지 않는다 — 스킬 템플릿은 전부 블록 스타일이다.
+- 값 뒤 `# 주석` 허용, 따옴표 선택. 정식 YAML 파서(js-yaml/pyyaml)를 써도 되고, 이 부분집합만 처리하는 소형 파서로도 충분하다.
+
+## 참조 구현 · 사용법
+
+이 계약서대로 동작하는 **무의존 참조 점검기**가 저장소에 있다: **`tools/check-docs.mjs`** (Node.js, npm 의존성 없음).
+
+```
+node tools/check-docs.mjs <문서세트-루트>
+```
+
+- `<루트>/00-index.md`의 `docbundle.docs` 매니페스트가 있으면 그걸로 문서를 발견, 없으면 `*.md`를 스캔.
+- 하는 일: frontmatter·doc_type 확인 → 기계 블록을 `machine.schema`로 검증 → 접두사 라우팅으로 크로스도큐먼트 참조 무결성(죽은 링크) 점검. 문제가 있으면 종료코드 1.
+- 이 점검기는 위 스키마 부분집합(type·required·enum·const·pattern·minItems·minProperties·properties·items·additionalProperties)만 구현한다. **완전한 JSON Schema 준수가 필요하면 `ajv`로 교체**하면 된다(스키마 파일은 그대로 재사용).
+
+## 커버리지 한계 (점검기가 "블록만으로는" 못 잡는 것)
+
+정직하게 밝힌다 — 아래는 기계 블록에 담기지 않아 자동 대조가 제한된다:
+- **디자인 토큰 참조**(`color.primary`·`spacing.md`): 화면 설계서의 **산문(규격)**에 있고 `screendesign.screens` 블록엔 없다. `design.tokens` 등기부는 적재되지만, 참조 쪽이 블록에 없어 대조는 산문 파싱이 필요하다.
+- **로컬 컴포넌트**(`UI.FEAT.*`): 도메인 파일의 산문 정의라 중앙 `uicomponents.list`엔 없다. 점검기는 `UI.FEAT.*` 참조를 **로컬로 간주해 스킵**한다.
+- **유스케이스**(`UC.*`): 현재 기계 블록/등기부가 없다(doc-builder·ia-designer의 유스케이스는 산문). 시나리오의 `usecase` 참조는 스킵된다.
+- 필요해지면 각 항목을 블록에 추가하거나(예: 화면 블록에 `tokens` 배열), 산문 파싱을 더해 확장한다.
 
 ## 한 줄 요약
 
