@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/screen-design.v1.schema.json",
+  "title": "EasyProduct 화면 설계서(도메인) — 화면 목록 블록 (payload v1)",
+  "description": "도메인 화면 설계 파일의 화면 목록을 기계가 읽는 사본. 글 정의(사람용, SSOT)가 원본이고 이 블록은 그 화면·참조의 미러. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["screens"],
+  "additionalProperties": true,
+  "properties": {
+    "screens": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "feat"],
+        "additionalProperties": true,
+        "properties": {
+          "id":   { "type": "string", "pattern": "^FEAT\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*(\\.(list|detail|write|edit))?$", "description": "화면 anchor. FEAT.<도메인>.<기능명>[.<화면종류>](화면종류는 list/detail/write/edit)." },
+          "feat": { "type": "string", "pattern": "^FEAT\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "이 화면이 구현하는 부모 기능 ID(IA가 확정). ia.features에 실재해야 함." },
+          "components": { "type": "array", "items": { "type": "string" }, "description": "이 화면이 참조하는 UI 컴포넌트 ID들(인벤토리에 실재해야 함)." },
+          "data":       { "type": "array", "items": { "type": "string" }, "description": "이 화면이 참조하는 데이터 변수들 <group>[.<field>](데이터 모델에 실재해야 함)." }
+        }
+      }
+    }
+  }
+}

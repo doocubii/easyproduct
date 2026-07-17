@@ -1,3 +1,17 @@
+---
+doc_type: screen-design
+doc_id: [scope]-[domain]
+title: "화면 설계서 · 도메인: [도메인 한국어 이름]"
+version: 1
+ssot: prose                 # 글 정의가 원본, screens 블록은 파생 미러
+machine:
+  lang: json
+  tag: screendesign.screens # 이 info-string 블록이 '공식 기계 표현'(화면 인덱스)
+  item: screen-list
+  schema: ./schemas/screen-design.v1.schema.json
+  namespace: FEAT           # 화면 anchor는 FEAT.<domain>.<name>[.<화면종류>]
+---
+
 # 화면 설계서 · 도메인: [도메인 한국어 이름]  ({scope} / `FEAT.{domain}.*`)
 
 > 공통 UI 정의·전역 정책은 **인덱스**(`screen-design-{scope}-index.md`)를 참조합니다. 여기서 복제하지 않습니다.
@@ -56,3 +70,33 @@
 
 ## [다음 화면 이름] (FEAT.{domain}.{기능명}.{화면종류})
 (같은 항목 반복 — 사이트맵 순서로)
+
+---
+
+## (기계 표현) 화면 인덱스
+
+위 화면들의 글 정의에서 뽑은, **소프트웨어가 읽는 사본**입니다. 글 정의(위)가 원본이고, 화면·참조가 바뀌면 이 블록도 함께 갱신합니다. 각 화면의 부모 기능·참조 컴포넌트·참조 데이터를 담아, 소프트웨어가 끊긴 참조를 자동 조회하게 합니다.
+
+```json screendesign.screens
+{
+  "screens": [
+    {
+      "id": "FEAT.member.search.list",
+      "feat": "FEAT.member.search",
+      "components": ["UI.card.default", "UI.FEAT.member.search.list.resultRow"],
+      "data": ["request.title", "request.price"]
+    }
+  ]
+}
+```
+
+- `id` = 화면 anchor `FEAT.<도메인>.<기능명>[.<화면종류>]`, `feat` = 부모 기능 ID(IA 확정), `components` = 참조 `UI.*`, `data` = 참조 데이터 변수.
+- 위 예시 1개는 형식 안내용입니다 — 실제로는 이 파일의 **모든 화면**을 담습니다.
+
+### 이 블록으로 소프트웨어가 자동 점검할 수 있는 것
+
+이 인덱스는 사람이 아니라 소프트웨어가 읽는 사본이라, 아래를 자동으로 확인할 수 있습니다(직접 하실 일은 아니고, 참고용입니다).
+
+- **형식 검증** — 화면 `id`가 `FEAT.<도메인>.<기능명>[.<화면종류>]` 꼴인지(화면종류는 list/detail/write/edit), `feat`가 기능 ID 꼴인지.
+- **글 정의 ↔ 인덱스 정합** — 위 화면들과 이 인덱스가 서로 어긋나지 않는지.
+- **다른 문서와의 참조** — `feat`가 IA(`ia.features`)에, `components`가 UI 인벤토리(`uicomponents.list`)에, `data`가 데이터 모델(`datamodel.group`)에 실재하는지(끊긴 참조 적발). 화면 설계서가 FEAT·UI·DATA를 잇는 매듭이라 여기서 세 방향을 한꺼번에 점검한다.

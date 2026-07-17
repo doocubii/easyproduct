@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/ui-components.v1.schema.json",
+  "title": "EasyProduct UI 컴포넌트 인벤토리 — 컴포넌트 목록 블록 (payload v1)",
+  "description": "UI 컴포넌트 인벤토리의 컴포넌트 목록을 기계가 읽는 사본. 인벤토리(사람용 정의)가 원본이고 이 블록은 미러. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["components"],
+  "additionalProperties": true,
+  "properties": {
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "scope"],
+        "additionalProperties": true,
+        "properties": {
+          "id":    { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)+$", "description": "컴포넌트 anchor. 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>." },
+          "scope": { "enum": ["central", "local"], "description": "중앙 재사용(central) / 화면 전용 로컬(local)." },
+          "label": { "type": "string" }
+        }
+      }
+    }
+  }
+}
