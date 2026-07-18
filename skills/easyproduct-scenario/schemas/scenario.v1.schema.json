@@ -20,7 +20,8 @@
           "status": { "enum": ["sketch", "derived", "confirmed"], "description": "탐색(sketch) / 파생(derived) / 확정(confirmed)." },
           "refs": {
             "type": "array",
-            "description": "이 여정이 닿는 크로스도큐먼트 참조. 존재 여부는 점검 소프트웨어가 각 원본 문서에서 확인한다.",
+            "minItems": 1,
+            "description": "이 여정이 닿는 크로스도큐먼트 참조 전부(추적표의 모든 기능·데이터·정책·유스케이스). 최소 1개 — 아무것도 안 닿는 시나리오는 없다(빈 refs 금지). 존재 여부는 점검 소프트웨어가 각 원본 문서에서 확인한다.",
             "items": {
               "type": "object",
               "required": ["kind", "id"],
