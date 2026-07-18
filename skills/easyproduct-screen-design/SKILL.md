@@ -345,11 +345,16 @@ temp/mockups/{scope}/
 ```
 
 > **frontmatter·기계 블록·스키마(기계 점검 층).** 도메인 파일과 인벤토리 파일은 각각 맨 앞에 frontmatter를 두고,
-> 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `(각 화면의 `id`·`feat`·`components`·`data`),
-> 인벤토리는 ` ```json uicomponents.list `(컴포넌트 `id`·`scope`). 글 정의·인벤토리 정의가 원본이고 이 블록들은 파생 미러다.
+> 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `, 인벤토리는 ` ```json uicomponents.list `(컴포넌트 `id`·`scope`).
+> 글 정의·인벤토리 정의가 원본이고 이 블록들은 파생 미러다.
 > 각 스키마(`schemas/screen-design.v1.schema.json`·`schemas/ui-components.v1.schema.json`)를 스킬 자산에서 위 위치(`screens/{scope}/schemas/`·`ssot/schemas/`)로 복사한다.
-> 이 블록들로 소프트웨어가 화면↔기능(IA)↔컴포넌트(인벤토리)↔데이터(모델) 참조를 자동 점검한다.
 > (index 파일은 링크 허브라 기계 블록을 두지 않는다 — frontmatter만 `doc_type: screen-design-index`로.)
+>
+> **`screendesign.screens` 블록은 각 화면의 참조를 빠짐없이 미러해야 한다(핵심 — 비우면 무의미).** 화면마다:
+> - `components`: 그 화면의 **"보이는 것"·"할 수 있는 일"에 등장한 모든 `UI.*` ID**(중앙·로컬 전부, 파라미터·중복 제외한 ID만). **최소 1개** — 빈 배열이나 `{id, feat}`만 있는 엔트리는 만들지 않는다.
+> - `data`: 그 화면의 **"데이터 정의"에 등장한 모든 데이터 변수**(`<group>` 또는 `<group>.<field>`). 데이터 모델에 실재하는 변수만(일회성 폼 값 등 비저장 값은 제외).
+> - `id`는 화면 ID(`FEAT.<도메인>.<기능명>[.<화면종류>]`), `feat`는 부모 기능 ID.
+> 이 두 필드(`components`·`data`)가 **블록의 존재 이유**다 — 소프트웨어가 화면↔기능(IA)↔컴포넌트(인벤토리)↔데이터(모델) 참조를 이걸로 점검한다. 산문엔 컴포넌트·데이터가 가득한데 블록엔 `id`·`feat`만 뽑으면 점검할 게 없어 **있으나마나한 블록**이 된다.
 
 규칙:
 - **도메인 단위 분리**: 화면설계서를 하나의 파일에 다 담지 않는다. FEAT 도메인마다 `screen-design-{scope}-{domain}.md`.
@@ -424,6 +429,7 @@ temp/mockups/{scope}/
 - **권한 없음·긴 텍스트 등 전역 표준을 정할 때마다 먼저 묻지 말 것** — 스킬이 판단해 정하고 컨펌은 메인 컨펌 때.
 - **재진입 시 문서를 처음부터 다시 만들지 말 것.** (나)에서 이미 있는 내용을 재작성하거나, 특정 필드 하나만 하드코딩해 처리하지 말 것(템플릿·구조 비교 일반 절차로).
 - **두 화면설계서(사용자/백오피스)를 업그레이드하며 한 파일로 합치지 말 것.**
+- **`screendesign.screens` 블록에 `id`·`feat`만 뽑고 `components`·`data`를 비우지 말 것.** 산문에 있는 모든 `UI.*`·데이터 변수를 미러해야 한다(빈 엔트리는 점검 불가라 무의미). `components`는 최소 1개.
 
 ## 산출물·참고 자산
 
