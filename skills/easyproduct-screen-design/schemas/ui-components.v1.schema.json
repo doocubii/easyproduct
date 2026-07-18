@@ -15,7 +15,7 @@
         "required": ["id", "scope"],
         "additionalProperties": true,
         "properties": {
-          "id":    { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)+$", "description": "컴포넌트 anchor. 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>." },
+          "id":    { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$", "description": "컴포넌트 anchor. 프리미티브 UI.<컴포넌트>(예: UI.table) / 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>. UI. 뒤 1마디 이상." },
           "scope": { "enum": ["central", "local"], "description": "중앙 재사용(central) / 화면 전용 로컬(local)." },
           "label": { "type": "string" }
         }

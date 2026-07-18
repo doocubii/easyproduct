@@ -49,7 +49,8 @@ machine:
 ```json uicomponents.list
 {
   "components": [
-    { "id": "UI.button.primary", "scope": "central", "label": "기본 버튼" }
+    { "id": "UI.button.primary", "scope": "central", "label": "기본 버튼" },
+    { "id": "UI.table", "scope": "central", "label": "테이블(프리미티브)" }
   ]
 }
 ```

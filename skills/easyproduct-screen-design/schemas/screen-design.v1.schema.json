@@ -12,13 +12,13 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "feat", "components"],
+        "required": ["id", "feat", "components", "data"],
         "additionalProperties": true,
         "properties": {
           "id":   { "type": "string", "pattern": "^FEAT\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*(\\.(list|detail|write|edit))?$", "description": "화면 anchor. FEAT.<도메인>.<기능명>[.<화면종류>](화면종류는 list/detail/write/edit)." },
           "feat": { "type": "string", "pattern": "^FEAT\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "이 화면이 구현하는 부모 기능 ID(IA가 확정). ia.features에 실재해야 함." },
           "components": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "이 화면이 참조하는 UI 컴포넌트 ID 전부(글 정의의 '보이는 것'·'할 수 있는 일'에 나온 모든 UI.*). 인벤토리(로컬 포함)에 실재해야 함. 최소 1개 — id·feat만 있는 빈 엔트리 금지." },
-          "data":       { "type": "array", "items": { "type": "string" }, "description": "이 화면이 참조하는 데이터 변수 전부(글 정의 '데이터 정의'의 모든 <group>[.<field>]). 데이터 모델에 실재해야 함. 화면이 데이터를 안 쓰면 생략 가능." }
+          "data":       { "type": "array", "items": { "type": "string" }, "description": "이 화면이 참조하는 데이터 변수 전부(글 정의 '데이터 정의'의 모든 <group>[.<field>]). 데이터 모델에 실재해야 함. components와 대칭 — 필수 필드다. 데이터가 있으면 빠짐없이 담고, 정적 화면(데이터 없음)이면 빈 배열 `[]`을 명시(생략 금지 — 생략하면 미러가 비대칭이 된다)." }
         }
       }
     }
