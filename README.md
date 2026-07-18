@@ -300,6 +300,33 @@ Claude: 네, 처음부터 다시 만들지 않고 지금 버전 구조와 비교
   예: `메인 홈(FEAT.home.landing)`, `환불·취소 기준(POL.payment.refund)`. ID만 있으면 가독성이 떨어지고 이름만 있으면 참조가
   깨지므로 둘 다 둡니다. 이 표기는 **새로 만들거나 수정하는 문서에만** 적용하며, 기존 문서가 이 형식이 아니어도 잘못된 것은 아닙니다.
 
+## 소프트웨어·하네스가 읽고 점검하는 층 (`0.3.0` 추가)
+
+이 스킬들이 만드는 문서는 이제 **사람이 읽는 층 + 소프트웨어가 읽는 층**을 함께 담습니다. 사람은
+표·산문을 읽고, 하네스·CI 같은 소프트웨어는 아래 기계 층을 읽어 **스펙과 문서 간 참조를 규약으로
+조회·점검**할 수 있습니다. 사람용 문서 모양은 그대로이고, 기계 층은 문서 안/옆에 조용히 얹힙니다.
+
+- **frontmatter** (문서 맨 앞 메타) — `doc_type`·`version`·`ssot`·`machine.*`로 "이게 무슨 문서이고,
+  기계용 블록을 어디서·어떤 계약으로 찾는지"를 선언합니다.
+- **태그된 기계 블록** — 사람용 표·산문을 옮긴 JSON 블록(예: 데이터 모델 `datamodel.group`,
+  IA `ia.features`, 정책서 `policy.rules`, 화면 설계 `screendesign.screens`, 디자인 `design.tokens`,
+  시나리오 `scenario.trace`). **사람용 표현이 원본(SSOT)이고 이 블록은 그 미러**입니다.
+- **JSON Schema** — 각 문서 옆 `schemas/*.v1.schema.json`에 검증 계약이 함께 나옵니다(버전을 파일명에
+  박아, `v1`로 쓴 문서는 언제나 `v1`으로 검증).
+- **크로스도큐먼트 참조 라우팅** — 위 "명명 규칙"의 접두사(`FEAT./DATA./POL./UI./SCN.`)가 곧 "어느
+  등기부에서 조회할지"의 타입 표시라, 문서 수십 개에 흩어진 참조가 실제로 존재하는지
+  (끊긴 참조 = 죽은 링크) 소프트웨어가 자동 확인합니다.
+
+**점검기와 개발 가이드.** `easyproduct-suite`는 문서 세트를 점검할 때 딸린 무의존 점검기
+[`skills/easyproduct-suite/scripts/check-docs.mjs`](./skills/easyproduct-suite/scripts/check-docs.mjs)(Node,
+npm 불필요)로 **스키마 검증 + 크로스도큐먼트 참조 무결성**을 확인합니다. 직접 점검기·CI를 만들려면
+필드 의미·`doc_type`/anchor 레지스트리·참조 라우팅·점검 알고리즘을 규약으로 정리한
+[`references/checker-guide.md`](./skills/easyproduct-suite/references/checker-guide.md)를 보세요. (점검기
+소스는 프로젝트로 복사되지 않으며, 필요하면 요청 시 제공됩니다.)
+
+> 옛 문서도 각 스킬의 **업그레이드(gap-fill)**로 이 기계 층을 덧입힐 수 있습니다 — 표·산문은 그대로
+> 두고 frontmatter·블록·스키마만 채웁니다.
+
 ## 로드맵 — 아직 없는 것
 
 - **백엔드 관련 스킬은 아직 없습니다.** API 명세, 서버 아키텍처, 인프라 구성 같은 순수 백엔드
