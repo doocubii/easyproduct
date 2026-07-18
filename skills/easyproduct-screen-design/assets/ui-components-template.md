@@ -49,14 +49,29 @@ machine:
 ```json uicomponents.list
 {
   "components": [
-    { "id": "UI.button.primary", "scope": "central", "label": "기본 버튼" },
-    { "id": "UI.table", "scope": "central", "label": "테이블(프리미티브)" }
+    {
+      "id": "UI.button.primary",
+      "scope": "central",
+      "label": "기본 버튼",
+      "default": "확인",
+      "params": ["label"],
+      "variants": ["primary", "secondary", "ghost", "disabled", "hover", "pressed"],
+      "spec": "높이 44px, radius radius.md, 배경 color.primary, 글자 color.onPrimary"
+    },
+    {
+      "id": "UI.table",
+      "scope": "central",
+      "label": "테이블(프리미티브)",
+      "params": ["columns", "rows"],
+      "variants": ["default", "compact"],
+      "spec": "행 높이 spacing.lg, 헤더 고정, 경계선 color.border. 목록·백오피스에서 재사용"
+    }
   ]
 }
 ```
 
-- `id` = 컴포넌트 anchor `UI.*`, `scope` = `central`(중앙 재사용)/`local`(화면 전용).
-- 위 예시 1줄은 형식 안내용입니다 — 실제로는 이 인벤토리의 **모든 컴포넌트**를 담습니다(로컬 컴포넌트는 도메인 파일의 인덱스에 담깁니다).
+- `id` = 컴포넌트 anchor `UI.*`, `scope` = `central`/`local`. **`spec`(규격)은 필수** — 이 블록이 id 목록에 그치지 않고 컴포넌트 정의를 실제로 담는 근거다. `default`·`params`·`variants`는 있으면 담고 없으면 생략.
+- 위 예시는 형식 안내용입니다 — 실제로는 이 인벤토리의 **모든 컴포넌트**를 위 산문 정의 그대로 옮겨 담습니다(로컬 컴포넌트는 도메인 파일의 인덱스에 담깁니다).
 
 ### 이 블록으로 소프트웨어가 자동 점검할 수 있는 것
 

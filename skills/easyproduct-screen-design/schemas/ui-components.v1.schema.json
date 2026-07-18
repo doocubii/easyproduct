@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://easyproduct.dev/schemas/ui-components.v1.schema.json",
   "title": "EasyProduct UI 컴포넌트 인벤토리 — 컴포넌트 목록 블록 (payload v1)",
-  "description": "UI 컴포넌트 인벤토리의 컴포넌트 목록을 기계가 읽는 사본. 인벤토리(사람용 정의)가 원본이고 이 블록은 미러. 봉투(frontmatter)는 별도 규약이다.",
+  "description": "UI 컴포넌트 인벤토리의 컴포넌트 정의를 기계가 읽는 사본. 인벤토리(사람용 정의)가 원본이고 이 블록은 그 미러. id뿐 아니라 파라미터·variants·규격까지 담아 소프트웨어가 산문을 파싱하지 않고도 컴포넌트를 얻게 한다. 봉투(frontmatter)는 별도 규약이다.",
   "type": "object",
   "required": ["components"],
   "additionalProperties": true,
@@ -12,12 +12,16 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "scope"],
+        "required": ["id", "scope", "spec"],
         "additionalProperties": true,
         "properties": {
-          "id":    { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$", "description": "컴포넌트 anchor. 프리미티브 UI.<컴포넌트>(예: UI.table) / 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>. UI. 뒤 1마디 이상." },
-          "scope": { "enum": ["central", "local"], "description": "중앙 재사용(central) / 화면 전용 로컬(local)." },
-          "label": { "type": "string" }
+          "id":       { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$", "description": "컴포넌트 anchor. 프리미티브 UI.<컴포넌트>(예: UI.table) / 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>. UI. 뒤 1마디 이상." },
+          "scope":    { "enum": ["central", "local"], "description": "중앙 재사용(central) / 화면 전용 로컬(local)." },
+          "label":    { "type": "string", "description": "사람이 읽는 이름(선택)." },
+          "default":  { "type": "string", "description": "기본 문구(값 안 넘길 때) — 없으면 생략." },
+          "params":   { "type": "array", "items": { "type": "string" }, "description": "호출 시 넘길 수 있는 파라미터 이름들(산문 '파라미터'). 없으면 [] 또는 생략." },
+          "variants": { "type": "array", "items": { "type": "string" }, "description": "variants/states 이름들(산문 'Variants / States'). 없으면 [] 또는 생략." },
+          "spec":     { "type": "string", "description": "규격(크기·radius 등 실제 값, 디자인 토큰 참조 포함) — 산문 '규격'을 옮긴 정의 본문. 이 블록의 존재 이유이므로 필수." }
         }
       }
     }

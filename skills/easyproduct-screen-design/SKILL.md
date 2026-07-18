@@ -345,7 +345,8 @@ temp/mockups/{scope}/
 ```
 
 > **frontmatter·기계 블록·스키마(기계 점검 층).** 도메인 파일과 인벤토리 파일은 각각 맨 앞에 frontmatter를 두고,
-> 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `, 인벤토리는 ` ```json uicomponents.list `(컴포넌트 `id`·`scope`).
+> 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `, 인벤토리는 ` ```json uicomponents.list `.
+> **인벤토리 블록은 id 목록이 아니라 컴포넌트 정의의 미러다** — 각 컴포넌트를 `{id, scope, spec, (있으면) default·params·variants}`로 담아, 소프트웨어가 산문을 파싱하지 않고도 컴포넌트를 얻게 한다. `spec`(규격)은 **필수** — id·scope만 담으면 산문 헤딩을 중복한 빈 껍데기가 되어 무의미하다(모든 컴포넌트를 산문 정의 그대로 옮긴다).
 > 글 정의·인벤토리 정의가 원본이고 이 블록들은 파생 미러다.
 > 각 스키마(`schemas/screen-design.v1.schema.json`·`schemas/ui-components.v1.schema.json`)를 스킬 자산에서 위 위치(`screens/{scope}/schemas/`·`ssot/schemas/`)로 복사한다.
 > (index 파일은 링크 허브라 기계 블록을 두지 않는다 — frontmatter만 `doc_type: screen-design-index`로.)
