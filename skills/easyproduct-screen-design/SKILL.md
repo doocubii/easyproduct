@@ -154,14 +154,17 @@ description: |
 컴포넌트를 화면마다 새로 그리면 같은 버튼·카드가 화면마다 달라진다. 그래서 **모든 컴포넌트는 ID를 갖고**,
 한 번 정의한 뒤 화면은 그 ID를 **참조**한다. 인벤토리는 md로 유지한다(별도 CSS 파일을 만들지 않는다).
 
-**공통 형식** (중앙·로컬 동일):
+**공통 형식** (중앙·로컬 동일). **파라미터·variants는 이름만 나열하지 말고 항목별로 종류·뜻까지 풀어쓴다** — 뜻을 모르면 나중에 사람·기계가 판단할 수 없다:
 ```
-## UI.카테고리.컴포넌트명[.variant]
-- 기본 문구(default): 화면에서 값을 안 넘기면 쓰이는 기본값.
-- 파라미터: 호출 시 넘길 수 있는 값(예: label, title, desc). 넘기면 그 값, 안 넘기면 기본값.
-- Variants / States: 버튼의 primary/ghost, hover/disabled 등.
+## UI.카테고리.컴포넌트명[.variant] — [컴포넌트 이름]
+- 기본 문구(default): 값을 안 넘기면 쓰이는 기본값. (없으면 생략)
+- 파라미터:
+  - `paramName` (`string`/`number`/`boolean`/`list`/`node` · 필수/선택) — 무엇을 뜻하는지 한 줄. (값이 정해지면) 값: `a` / `b` / `c`
+- Variants / States:
+  - `variantName` — 그 상태가 무엇인지 한 줄
 - 규격: 크기·radius 등 실제 값(디자인 컨셉의 토큰을 참조해 구체화).
 ```
+- **파라미터 종류(type)는 영문**: `string`/`number`/`boolean`/`list`/`node`(node=slot·body 등 내부 콘텐츠 영역).
 - **ID 형식**: `UI.카테고리.컴포넌트명[.variant]`(예: `UI.button.primary`). 널리 쓰이는 **프리미티브는 단일 마디** `UI.<컴포넌트>`도 허용한다(예: `UI.table`·`UI.modal`·`UI.toast`·`UI.tabs`·`UI.pagination`·`UI.accordion`). 억지로 카테고리를 붙이지 않아도 된다. `UI`는 **대문자 고정**(FEAT·데이터 변수와 안 겹치게).
 - **다국어 확장 대비**: 지금은 문구를 문자열 하나로 두되, 나중에 `{ko:"…", en:"…"}` 같은 언어별 키로
   확장 가능한 구조임을 **인벤토리 서두에 한 줄 명시**한다.
@@ -346,7 +349,7 @@ temp/mockups/{scope}/
 
 > **frontmatter·기계 블록·스키마(기계 점검 층).** 도메인 파일과 인벤토리 파일은 각각 맨 앞에 frontmatter를 두고,
 > 하단에 기계 블록을 둔다 — 도메인 파일은 ` ```json screendesign.screens `, 인벤토리는 ` ```json uicomponents.list `.
-> **인벤토리 블록은 id 목록이 아니라 컴포넌트 정의의 미러다** — 각 컴포넌트를 `{id, scope, spec, (있으면) default·params·variants}`로 담아, 소프트웨어가 산문을 파싱하지 않고도 컴포넌트를 얻게 한다. `spec`(규격)은 **필수** — id·scope만 담으면 산문 헤딩을 중복한 빈 껍데기가 되어 무의미하다(모든 컴포넌트를 산문 정의 그대로 옮긴다).
+> **인벤토리 블록은 id 목록이 아니라 컴포넌트 정의의 미러다** — 각 컴포넌트를 `{id, scope, spec, (있으면) default, params, variants}`로 담아, 소프트웨어가 산문을 파싱하지 않고도 컴포넌트를 얻게 한다. `spec`(규격)은 **필수** — id·scope만 담으면 산문 헤딩을 중복한 빈 껍데기가 되어 무의미하다. **`params`·`variants`는 이름만이 아니라 뜻까지** 담는다: `params[]`=`{name, type(영문), required, desc, (enum이면) values}`, `variants[]`=`{name, desc}`. `type`·`desc`가 없는 파라미터는 두지 않는다(뜻 없는 이름은 나중에 판단 불가). 산문에도 파라미터·variants를 항목별로 풀어쓴 걸 그대로 옮긴다.
 > 글 정의·인벤토리 정의가 원본이고 이 블록들은 파생 미러다.
 > 각 스키마(`schemas/screen-design.v1.schema.json`·`schemas/ui-components.v1.schema.json`)를 스킬 자산에서 위 위치(`screens/{scope}/schemas/`·`ssot/schemas/`)로 복사한다.
 > (index 파일은 링크 허브라 기계 블록을 두지 않는다 — frontmatter만 `doc_type: screen-design-index`로.)
