@@ -165,7 +165,7 @@ for (const doc of loaded) {
       for (const c of uiRefs) { if (/^UI\.FEAT\./.test(c)) continue; refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; } }
       const dataRefs = [...(dat.display || [])];
       for (const a of (dat.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
-      for (const b of (dat.bindings || [])) if (b.var) dataRefs.push(b.var);
+      for (const b of (dat.bindings || [])) for (const v of (b.vars || (b.var ? [b.var] : []))) dataRefs.push(v);
       for (const dv of dataRefs) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
     }
     // 시나리오: refs 를 kind로 라우팅

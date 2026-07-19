@@ -43,14 +43,14 @@
               },
               "bindings": {
                 "type": "array",
-                "description": "요소↔변수 바인딩(어느 UI 컴포넌트에 어느 변수가 붙나). 글 정의의 '요소 ← 변수'·목업 data-bind를 옮긴다. 선택.",
+                "description": "요소↔변수 바인딩(어느 UI 컴포넌트가 어느 변수들을 표시하나). 글 정의의 '요소 ← 변수'·목업 data-bind를 옮긴다. 한 컴포넌트가 여러 변수를 표시하면 vars에 모은다. 선택.",
                 "items": {
                   "type": "object",
-                  "required": ["ui", "var"],
+                  "required": ["ui", "vars"],
                   "additionalProperties": true,
                   "properties": {
-                    "ui":  { "type": "string", "description": "바인딩되는 컴포넌트 ID(UI.*). 인벤토리(로컬 포함)에 실재해야 함." },
-                    "var": { "type": "string", "description": "붙는 데이터 변수(<group>[.<field>]). 데이터 모델 실재 변수만." }
+                    "ui":   { "type": "string", "description": "바인딩되는 컴포넌트 ID(UI.*). 인벤토리(로컬 포함)에 실재해야 함." },
+                    "vars": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "그 컴포넌트가 표시하는 데이터 변수 전부(<group>[.<field>]). 데이터 모델 실재 변수만. 최소 1개." }
                   }
                 }
               }
