@@ -2,15 +2,19 @@
   easyproduct 스킬 설치 스크립트 (Windows PowerShell)
 
   사용법:
-    .\install.ps1                    → %USERPROFILE%\.claude\skills 에 설치 (전역, 기본값)
-    .\install.ps1 -Base <기준 폴더>   → <기준 폴더>\.claude\skills 에 설치 (예: 프로젝트 폴더)
+    .\install.ps1                    대화형: "전역(~\.claude)에 설치할까요? [Y/n]"
+                                     → Y/엔터 = 전역(%USERPROFILE%\.claude\skills)
+                                     → n      = 프로젝트 폴더 경로를 입력받아 <폴더>\.claude\skills 에 설치
+    .\install.ps1 -Yes               컨펌 없이 전역에 설치
+    .\install.ps1 -Base <기준 폴더>   컨펌 없이 <기준 폴더>\.claude\skills 에 설치 (예: 프로젝트 폴더)
 
   - 대상 위치에 .claude\skills 폴더가 없으면 만들어 준다.
   - 이미 있는 스킬은 최신 내용으로 덮어쓴다(갱신).
   - 저장소 안의 skills\ 폴더를 원본으로 복사한다(이 스크립트는 저장소 루트에 있어야 한다).
 #>
 param(
-  [string]$Base = $env:USERPROFILE
+  [string]$Base = "",
+  [switch]$Yes
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +22,23 @@ $ErrorActionPreference = "Stop"
 # 이 스크립트가 있는 폴더(= 저장소 루트)를 기준으로 원본 skills\ 를 찾는다.
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SrcDir = Join-Path $ScriptDir "skills"
+
+# 기준 폴더 결정: -Base 명시 → 그대로 / -Yes → 전역(컨펌 생략) / 그 외 → 대화형 컨펌
+if ([string]::IsNullOrWhiteSpace($Base)) {
+  if ($Yes) {
+    $Base = $env:USERPROFILE
+  } else {
+    $ans = Read-Host "전역(~\.claude)에 설치할까요? [Y/n]"
+    if ($ans -match '^[nN]') {
+      $proj = Read-Host "설치할 프로젝트 폴더 경로를 입력하세요(예: . 또는 C:\path\to\project)"
+      if ([string]::IsNullOrWhiteSpace($proj)) { Write-Error "폴더 경로가 비었습니다. 취소합니다."; exit 1 }
+      $Base = $proj
+    } else {
+      $Base = $env:USERPROFILE
+    }
+  }
+}
+
 $Dest = Join-Path (Join-Path $Base ".claude") "skills"
 
 if (-not (Test-Path -LiteralPath $SrcDir)) {

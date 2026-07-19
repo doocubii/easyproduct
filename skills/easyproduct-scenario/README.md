@@ -39,7 +39,7 @@
 - 같은 여정이 앞의 **스케치(드라이버)**와 뒤의 **파생물(검증)**로 두 번 등장하며, `easyproduct-suite`가 스케치·파생·검증 시점에 이 스킬을 호출합니다. 승격 시에는 spec-kit의 인수 시나리오가 됩니다.
 
 ## 버전
-- easyproduct 세트 `0.2.2`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.4.3`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.

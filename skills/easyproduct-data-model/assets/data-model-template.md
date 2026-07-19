@@ -1,3 +1,17 @@
+---
+doc_type: data-model
+doc_id: [서비스-slug]
+title: "데이터 모델: [서비스 이름]"
+version: 1
+ssot: table                 # 원본은 표, JSON 블록은 파생 미러
+machine:
+  lang: json
+  tag: datamodel.group      # 이 info-string을 가진 코드블록이 '공식 기계 표현'
+  item: group               # 블록 1개 = 데이터 그룹 1개
+  schema: ./schemas/data-model.v1.schema.json
+  namespace: DATA           # 그룹 anchor는 DATA.<group> (크로스도큐먼트 참조용)
+---
+
 # 데이터 모델: [서비스 이름]
 
 > 이 데이터 모델은 데이터(정보 항목·이름·구조)에 관해 기획서를 포함한 다른 어떤 문서보다
@@ -12,8 +26,10 @@
 >
 > **각 그룹 표 바로 아래에는 그 그룹 구조를 담은 JSON 블록**이 있습니다(소프트웨어가 바로 읽도록).
 > **표가 원본(SSOT)이고 JSON은 그 미러**입니다 — 표를 고치면 JSON을 다시 생성해 맞추고, **JSON을 손으로 고치지 않습니다.**
-> JSON 표기 규칙: 타입은 영문(`string`/`number`/`datetime`/`date`/`boolean`/`list`/`image`),
+> JSON 표기 규칙: 코드블록은 ` ```json datamodel.group `으로 태깅하고, 각 블록 맨 위에 그룹 anchor `"id": "DATA.<group>"`를 둔다.
+> 타입은 영문(`string`/`number`/`datetime`/`date`/`boolean`/`list`/`image`),
 > `source`는 `auto:managed`/`auto:preset`/`user`, 필드명은 그룹 상단 `group` + 짧은 `name`(전체 변수는 `그룹.name`).
+> 다른 문서는 이 그룹을 `DATA.<group>`으로, 필드를 `<group>.<name>`으로 참조한다.
 
 ---
 
@@ -43,8 +59,9 @@
 
 **관계**: 회원 한 명은 요청(`request`)을 여러 개 만들 수 있다.
 
-```json
+```json datamodel.group
 {
+  "id": "DATA.user",
   "group": "user",
   "label": "회원",
   "description": "이 서비스에 가입한 사용자.",
@@ -78,8 +95,9 @@
 
 **관계**: 요청 하나는 회원(`user`) 한 명에게 속한다.
 
-```json
+```json datamodel.group
 {
+  "id": "DATA.request",
   "group": "request",
   "label": "요청",
   "description": "회원이 올리는 요청.",
@@ -102,6 +120,18 @@
 - **자동(관리)**: 모든 데이터에 공통으로 들어가는 관리용 항목(고유 번호·만든 시각 등). 대개 그대로 둡니다.
 - **자동(프리셋)**: 이런 종류의 서비스면 대개 필요해서 스킬이 미리 깔아 둔 항목. 필요 없으면 빼세요.
 - **사용자**: 사용자가 준 정보에서 나온 항목.
+
+---
+
+## 이 JSON 블록으로 소프트웨어가 자동 점검할 수 있는 것
+
+각 그룹 표 아래의 JSON 블록은 사람이 아니라 **소프트웨어가 읽는 사본**입니다. 이 블록이 있으면 아래를 자동으로 확인할 수 있습니다(직접 하실 일은 아니고, 참고용입니다).
+
+- **형식 검증** — `type`·`source` 등 값이 정해진 목록에 맞는지. 오타·잘못된 값(예: `type:"text"`)을 자동으로 잡아냅니다.
+- **표↔JSON 정합** — 사람용 표의 필드와 JSON 사본의 필드가 서로 어긋나지 않는지.
+- **이름 규칙** — `id`가 `DATA.<group>` 꼴이고 `group` 값과 맞는지, 변수명이 `<group>.<name>` 꼴인지.
+- **관계 확인** — `relations`의 `target`이 실제 존재하는 그룹을 가리키는지.
+- **다른 문서와의 참조** — 다른 문서·화면이 가리키는 `DATA.<group>`/필드가 실제로 여기 있는지(끊긴 참조 적발), 반대로 아무 데서도 안 쓰는 필드 탐지.
 
 ---
 

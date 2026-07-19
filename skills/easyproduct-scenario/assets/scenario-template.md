@@ -1,3 +1,17 @@
+---
+doc_type: scenario
+doc_id: [도메인-이름]
+title: "시나리오: [여정 이름]"
+version: 1
+ssot: prose                 # 흐름(GWT)·추적표가 원본, trace 블록은 파생 미러
+machine:
+  lang: json
+  tag: scenario.trace       # 이 info-string 블록이 '공식 기계 표현'(추적 미러)
+  item: scenario-list       # 블록 1개에 이 파일의 시나리오(들)
+  schema: ./schemas/scenario.v1.schema.json
+  namespace: SCN            # 시나리오 anchor는 SCN.<domain>.<name>
+---
+
 # 시나리오: [여정 이름]
 
 > 이 문서는 사용자가 서비스에서 밟는 **하나의 여정**을 정리한 것입니다.
@@ -60,6 +74,38 @@ flowchart TD
 | 데이터 | 조직(`organization`), 멤버 역할(`membership.role`), 계정유형(`account.type`) | 데이터 모델 |
 | 정책 | 결제 정책(`POL.payment.charge`) | 정책서 |
 | 유스케이스 | 조직 만들기(`UC.org.create`) | supporting/use-cases.md |
+
+### (기계 표현) 추적 미러
+
+위 추적표를 **소프트웨어가 읽는 사본**으로 옮긴 것입니다. 위 표(사람용)가 원본이고, 스텝·참조가 바뀌면 이 블록도 다시 만듭니다. `kind`는 참조 종류(어느 원본에서 조회할지)이고 `id`는 대상입니다.
+
+```json scenario.trace
+{
+  "scenarios": [
+    {
+      "id": "SCN.org.onboarding",
+      "label": "조직 온보딩",
+      "status": "derived",
+      "refs": [
+        { "kind": "feat",    "id": "FEAT.org.create" },
+        { "kind": "feat",    "id": "FEAT.billing.checkout" },
+        { "kind": "data",    "id": "organization" },
+        { "kind": "data",    "id": "membership.role" },
+        { "kind": "policy",  "id": "POL.payment.charge" },
+        { "kind": "usecase", "id": "UC.org.create" }
+      ]
+    }
+  ]
+}
+```
+
+### 이 블록으로 소프트웨어가 자동 점검할 수 있는 것
+
+이 미러는 사람이 아니라 소프트웨어가 읽는 사본이라, 아래를 자동으로 확인할 수 있습니다(직접 하실 일은 아니고, 참고용입니다).
+
+- **형식 검증** — `id`가 `SCN.<도메인>.<이름>` 꼴인지, `status`·`kind` 값이 정해진 목록에 맞는지.
+- **추적표 ↔ 미러 정합** — 위 사람용 표의 참조와 이 블록의 참조가 서로 어긋나지 않는지.
+- **끊긴 링크(죽은 링크)** — `refs`가 가리키는 기능·데이터·정책·유스케이스가 **실제 원본 문서에 있는지**(`kind`로 어느 등기부를 볼지 정해 자동 조회). 이 스킬 S4 "링크 존재 검사"를 기계가 대신한다.
 
 ## 원본 링크
 

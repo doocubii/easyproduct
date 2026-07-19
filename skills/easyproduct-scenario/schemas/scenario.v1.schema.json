@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://easyproduct.dev/schemas/scenario.v1.schema.json",
+  "title": "EasyProduct 시나리오 — 추적(trace) 블록 (payload v1)",
+  "description": "시나리오 문서의 추적표를 기계가 읽는 사본. 각 SCN 여정이 닿는 참조(FEAT/데이터/정책/유스케이스)를 타입과 함께 담는다. 봉투(frontmatter)는 별도 규약이다.",
+  "type": "object",
+  "required": ["scenarios"],
+  "additionalProperties": true,
+  "properties": {
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "refs"],
+        "additionalProperties": true,
+        "properties": {
+          "id":     { "type": "string", "pattern": "^SCN\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "시나리오 anchor. SCN.<domain>.<name>." },
+          "label":  { "type": "string", "description": "사람이 보는 여정 이름." },
+          "status": { "enum": ["sketch", "derived", "confirmed"], "description": "탐색(sketch) / 파생(derived) / 확정(confirmed)." },
+          "refs": {
+            "type": "array",
+            "minItems": 1,
+            "description": "이 여정이 닿는 크로스도큐먼트 참조 전부(추적표의 모든 기능·데이터·정책·유스케이스). 최소 1개 — 아무것도 안 닿는 시나리오는 없다(빈 refs 금지). 존재 여부는 점검 소프트웨어가 각 원본 문서에서 확인한다.",
+            "items": {
+              "type": "object",
+              "required": ["kind", "id"],
+              "additionalProperties": true,
+              "properties": {
+                "kind": { "enum": ["feat", "data", "policy", "usecase", "scenario"], "description": "참조 종류 → 어느 등기부에서 조회할지 결정." },
+                "id":   { "type": "string", "description": "참조 대상 ID. kind=feat→FEAT.*, data→<group>[.<field>], policy→POL.*, usecase→UC.*, scenario→SCN.*." }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
