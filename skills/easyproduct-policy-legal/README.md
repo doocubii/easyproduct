@@ -43,7 +43,7 @@
 - 개인정보처리방침은 이용약관과 한 묶음으로 취급하며, 안전 원칙·검토 경고는 어떤 산출 조합에서도 동일하게 적용됩니다.
 
 ## 버전
-- easyproduct 세트 `0.4.3`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.4.4`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.
