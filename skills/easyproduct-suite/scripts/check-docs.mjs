@@ -153,11 +153,18 @@ let refChecked = 0, dead = 0;
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
-    // 화면 설계: feat → ia, components → ui(중앙; 로컬 UI.FEAT.* 는 스킵), data → 데이터모델
+    // 화면 설계: feat → ia, 컴포넌트(components + io.ui + bindings.ui) → ui(중앙; 로컬 UI.FEAT.* 는 스킵),
+    //           데이터(display + io.sends/receives + bindings.var) → 데이터모델. (구 포맷 s.data 는 display로 호환)
     for (const s of (o.screens || [])) {
       refChecked++; if (s.feat && !reg.feat.has(s.feat)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 feat ${s.feat} → ia.features에 없음`); dead++; }
-      for (const c of (s.components || [])) { if (/^UI\.FEAT\./.test(c)) continue; refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; } }
-      for (const dv of (s.data || [])) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
+      const uiRefs = [...(s.components || [])];
+      for (const a of (s.io || [])) if (a.ui) uiRefs.push(a.ui);
+      for (const b of (s.bindings || [])) if (b.ui) uiRefs.push(b.ui);
+      for (const c of uiRefs) { if (/^UI\.FEAT\./.test(c)) continue; refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; } }
+      const dataRefs = [...(s.display || s.data || [])];
+      for (const a of (s.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
+      for (const b of (s.bindings || [])) if (b.var) dataRefs.push(b.var);
+      for (const dv of dataRefs) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
     }
     // 시나리오: refs 를 kind로 라우팅
     for (const sc of (o.scenarios || [])) for (const r of (sc.refs || [])) {

@@ -386,7 +386,7 @@ Stage 3.8(화면 설계)이 실행됐을 때만, 그 끝에 한 번 묻는다:
    기계 블록(데이터 모델 `datamodel.group`, IA `ia.features`, 정책 `policy.rules`, 화면 설계 `screendesign.screens`,
    인벤토리 `uicomponents.list`, 디자인 `design.tokens`, 시나리오 `scenario.trace`)을 갖는다. 소프트웨어로 다음을 점검한다:
    - **스키마 검증**: 각 기계 블록이 문서 frontmatter가 가리키는 payload 스키마(`schemas/*.json`)에 맞는지(형식·enum·anchor 형식). 위반은 해당 문서의 문제로 보고.
-   - **크로스도큐먼트 참조 무결성**: 접두사로 어느 등기부를 볼지 정해 자동 조회한다 — 화면 설계의 `feat`→`ia.features`, `components`→`uicomponents.list`, `data`→`datamodel.group`; 시나리오 `refs`→각 종류의 등기부; UI/화면의 토큰 참조→`design.tokens`; 시나리오·화면의 `POL.*`→`policy.rules`. **끊긴 참조(죽은 링크)**를 보고한다.
+   - **크로스도큐먼트 참조 무결성**: 접두사로 어느 등기부를 볼지 정해 자동 조회한다 — 화면 설계의 `feat`→`ia.features`, `components`(+`io.ui`·`bindings.ui`)→`uicomponents.list`, `display`·`io.sends`·`io.receives`·`bindings.var`→`datamodel.group`; 시나리오 `refs`→각 종류의 등기부; UI/화면의 토큰 참조→`design.tokens`; 시나리오·화면의 `POL.*`→`policy.rules`. **끊긴 참조(죽은 링크)**를 보고한다.
    - 이 점검은 3-1(시나리오 정합)과 겹치는 부분이 있으나 **시나리오가 없어도** 돌고, 사람이 못 보는 문서 수십 개의 ID 참조를 **기계가 일괄** 확인한다는 점에서 완성도·정합 점검을 보완한다. 위반이 있을 때만 조용히 보고한다.
    - **실행 방법**: 이 스킬에 딸린 점검기 **`scripts/check-docs.mjs`**(무의존 Node)를 문서 세트 폴더에 겨눠 돌린다 — `node <이 스킬 경로>/scripts/check-docs.mjs <프로젝트 폴더>`(node를 쓸 수 있는 환경). 규약·판정 기준은 `references/checker-guide.md`. node를 못 쓰는 환경(claude.ai 등)이면 그 가이드의 "점검자 알고리즘"대로 직접 읽어 점검하거나, 자동 점검이 어려우면 그 사실을 알린다. **점검기는 프로젝트 폴더로 복사하지 않는다**(문서 세트엔 문서 + `schemas/*.json`만 나간다 — 점검기는 이 스킬이 들고 실행하는 자산).
 4. **문서 묶음 안내 생성.** `assets/doc-bundle-index-template.md`를 채워, 어떤 문서가 있고 무엇을 위한 것이며
