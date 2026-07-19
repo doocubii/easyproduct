@@ -84,13 +84,24 @@ machine:
       "id": "FEAT.member.search.list",
       "feat": "FEAT.member.search",
       "components": ["UI.card.default", "UI.FEAT.member.search.list.resultRow"],
-      "data": ["request.title", "request.price"]
+      "data": {
+        "display": ["request.title", "request.price"],
+        "io": [
+          { "action": "필터 적용", "ui": "UI.input.select", "sends": ["request.status"], "receives": [] }
+        ],
+        "bindings": [
+          { "ui": "UI.FEAT.member.search.list.resultRow", "vars": ["request.title", "request.price"] }
+        ]
+      }
     }
   ]
 }
 ```
 
-- `id` = 화면 anchor `FEAT.<도메인>.<기능명>[.<화면종류>]`, `feat` = 부모 기능 ID(IA 확정), `components` = 참조 `UI.*`, `data` = 참조 데이터 변수.
+- `id` = 화면 anchor `FEAT.<도메인>.<기능명>[.<화면종류>]`, `feat` = 부모 기능 ID(IA 확정), `components` = 참조 `UI.*`(UI 축).
+- **`data`(데이터 축)는 방향별로 나눈다** — 산문 "데이터 정의"를 그대로 미러(한 통에 뭉뚱그리지 않는다):
+  - `display` = 보여주는(읽기) 변수 전부(없으면 `[]`), `io` = 각 동작 `{action,(선택)ui,(선택)op,sends[],receives[]}`(없으면 `[]`), `bindings`(선택) = 요소↔변수 `{ui, vars[]}`.
+  - `display`·`io.sends`·`io.receives`·`bindings.vars`는 **데이터 모델 실재 변수만**(내비게이션·결과값은 산문에만). `io.ui`·`bindings.ui`는 컴포넌트 참조.
 - 위 예시 1개는 형식 안내용입니다 — 실제로는 이 파일의 **모든 화면**을 담습니다.
 
 ### 이 블록으로 소프트웨어가 자동 점검할 수 있는 것
@@ -99,4 +110,4 @@ machine:
 
 - **형식 검증** — 화면 `id`가 `FEAT.<도메인>.<기능명>[.<화면종류>]` 꼴인지(화면종류는 list/detail/write/edit), `feat`가 기능 ID 꼴인지.
 - **글 정의 ↔ 인덱스 정합** — 위 화면들과 이 인덱스가 서로 어긋나지 않는지.
-- **다른 문서와의 참조** — `feat`가 IA(`ia.features`)에, `components`가 UI 인벤토리(`uicomponents.list`)에, `data`가 데이터 모델(`datamodel.group`)에 실재하는지(끊긴 참조 적발). 화면 설계서가 FEAT·UI·DATA를 잇는 매듭이라 여기서 세 방향을 한꺼번에 점검한다.
+- **다른 문서와의 참조** — `feat`가 IA(`ia.features`)에, `components`(+`data.io.ui`·`data.bindings.ui`)가 UI 인벤토리(`uicomponents.list`)에, `data.display`·`data.io.sends`·`data.io.receives`·`data.bindings.vars`가 데이터 모델(`datamodel.group`)에 실재하는지(끊긴 참조 적발). 화면 설계서가 FEAT·UI·DATA를 잇는 매듭이라 여기서 세 방향을 한꺼번에 점검한다.
