@@ -2,8 +2,11 @@
 # easyproduct 스킬 설치 스크립트 (macOS / Linux / Git Bash)
 #
 # 사용법:
-#   ./install.sh                 → ~/.claude/skills 에 설치 (전역, 기본값)
-#   ./install.sh <기준 폴더>      → <기준 폴더>/.claude/skills 에 설치 (예: 프로젝트 폴더)
+#   ./install.sh          대화형: "전역(~/.claude)에 설치할까요? [Y/n]"
+#                         → Y/엔터 = 전역(~/.claude/skills)
+#                         → n      = 프로젝트 폴더 경로를 입력받아 <폴더>/.claude/skills 에 설치
+#   ./install.sh -y       컨펌 없이 전역(~/.claude/skills)에 설치
+#   ./install.sh <기준 폴더>   컨펌 없이 <기준 폴더>/.claude/skills 에 설치 (예: 프로젝트 폴더, '.' = 현재 폴더)
 #
 # - 대상 위치에 .claude/skills 폴더가 없으면 만들어 준다.
 # - 이미 있는 스킬은 최신 내용으로 덮어쓴다(갱신).
@@ -15,8 +18,50 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/skills"
 
-# 첫 번째 인자가 있으면 그 폴더를 기준으로, 없으면 홈 디렉터리(~)를 기준으로.
-BASE="${1:-$HOME}"
+# 인자 파싱: -y(컨펌 생략·전역), 위치 인자(기준 폴더).
+ASSUME_YES=0
+BASE_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) ASSUME_YES=1 ;;
+    -h|--help)
+      cat <<'USAGE'
+사용법:
+  ./install.sh          대화형 컨펌 후 설치 (Y=전역 ~/.claude, n=프로젝트 폴더 입력)
+  ./install.sh -y       컨펌 없이 전역(~/.claude/skills)에 설치
+  ./install.sh <폴더>   컨펌 없이 <폴더>/.claude/skills 에 설치 ('.' = 현재 폴더)
+USAGE
+      exit 0 ;;
+    -*) echo "알 수 없는 옵션: $arg (사용법: ./install.sh -h)" >&2; exit 2 ;;
+    *) BASE_ARG="$arg" ;;
+  esac
+done
+
+# 기준 폴더 결정
+if [ -n "$BASE_ARG" ]; then
+  BASE="$BASE_ARG"                          # 명시 경로 → 그대로(비대화)
+elif [ "$ASSUME_YES" -eq 1 ]; then
+  BASE="$HOME"                              # -y → 전역, 컨펌 없이
+elif [ -t 0 ]; then
+  # 대화형 컨펌
+  printf "전역(~/.claude)에 설치할까요? [Y/n] "
+  read -r _ans
+  case "$_ans" in
+    [nN]*)
+      printf "설치할 프로젝트 폴더 경로를 입력하세요(예: . 또는 /path/to/project): "
+      read -r _proj
+      [ -n "$_proj" ] || { echo "폴더 경로가 비었습니다. 취소합니다." >&2; exit 1; }
+      _proj="${_proj/#\~/$HOME}"            # 앞의 ~ 를 홈으로 확장
+      BASE="$_proj"
+      ;;
+    *) BASE="$HOME" ;;                      # Y/엔터(기본) → 전역
+  esac
+else
+  # 비대화 입력(파이프 등): 프롬프트 불가 → 전역 기본 + 안내
+  echo "비대화 입력이라 컨펌을 건너뜁니다 → 전역(~/.claude)에 설치합니다." >&2
+  echo "(프로젝트에 설치하려면 './install.sh <폴더>', 전역을 명시하려면 '-y')" >&2
+  BASE="$HOME"
+fi
 DEST="$BASE/.claude/skills"
 
 if [ ! -d "$SRC_DIR" ]; then
