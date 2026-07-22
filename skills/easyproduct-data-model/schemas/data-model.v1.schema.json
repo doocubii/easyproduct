@@ -2,43 +2,86 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://easyproduct.dev/schemas/data-model.v1.schema.json",
   "title": "EasyProduct 데이터 모델 — 그룹 블록 (payload v1)",
-  "description": "데이터 모델 문서의 각 그룹 표 아래 인라인 JSON 미러 한 개(= 그룹 하나)의 계약. 봉투(frontmatter)는 별도 규약이다.",
+  "description": "데이터 모델 문서의 각 그룹 표 아래 인라인 JSON 미러 한 개(= 그룹 하나)의 계약. 봉투(frontmatter)는 별도 규약이다. 이 블록은 사람용 표(SSOT)의 파생 미러이며, 표가 바뀌면 다시 생성한다(손으로 부분수정하지 않는다). 담는 것은 '이 서비스가 다루는 정보의 정의'뿐이다 — 그 데이터가 어느 화면에서 쓰이는지 같은 다른 문서 소관의 관계는 담지 않는다(그 원본은 화면 설계서의 screens[].data이고, 필요하면 거기서 유도한다).",
   "type": "object",
   "required": ["id", "group", "label", "fields"],
   "additionalProperties": true,
   "properties": {
-    "id":    { "type": "string", "pattern": "^DATA\\.[a-z][a-zA-Z]*$", "description": "그룹의 크로스도큐먼트 anchor. DATA.<group> 형식." },
-    "group": { "type": "string", "pattern": "^[a-z][a-zA-Z]*$", "description": "영문 소문자 단수 그룹명(접두사 없는 로컬 이름)." },
-    "label": { "type": "string" },
-    "description": { "type": "string" },
+    "id": {
+      "type": "string",
+      "pattern": "^DATA\\.[a-z][a-zA-Z]*$",
+      "description": "이 그룹의 크로스도큐먼트 anchor(등기부 열쇠). 'DATA.<group>' 형식이고 group 값과 반드시 일치한다(DATA. + group). 다른 문서가 이 그룹을 가리킬 때 쓰는 ID이며, 접두사 DATA.가 곧 '데이터 모델에서 조회하라'는 타입 표시다. 사람용 표에는 이 접두사를 쓰지 않는다(표는 'user.email'처럼 씀)."
+    },
+    "group": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z]*$",
+      "description": "그룹의 로컬 이름 — 접두사 없는 영문 소문자 시작 단수 명사(예: user, request, orderItem). 필드의 전체 변수명은 '<group>.<name>'으로 조립된다. 단수를 쓰는 이유는 '한 건'을 가리키기 때문이다(users 아님)."
+    },
+    "label": {
+      "type": "string",
+      "description": "그룹의 한글 이름. 비전문가가 표에서 읽는 이름이다(예: '회원', '요청'). 사람용 표의 그룹 제목과 같아야 한다."
+    },
+    "description": {
+      "type": "string",
+      "description": "이 그룹이 무엇을 담는 묶음인지 한두 문장으로. 산문(표 위 설명)과 같은 뜻이어야 한다. '무엇의 묶음인가'를 적고, 화면·기능 이야기는 넣지 않는다."
+    },
     "fields": {
       "type": "array",
       "minItems": 1,
+      "description": "이 그룹에 속한 데이터 항목 전부. 사람용 표의 모든 행을 빠짐없이 담는다(빈 배열 금지 — 항목이 없는 그룹은 그룹이 아니다). 표에 있는 행이 여기 없거나 그 반대면 coverage 점검에서 걸린다.",
       "items": {
         "type": "object",
-        "required": ["name", "type", "required", "source"],
+        "required": ["name", "type", "required", "filledBy"],
         "additionalProperties": true,
         "properties": {
-          "name":     { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$", "description": "camelCase 필드명. 전체 변수는 <group>.<name>." },
-          "label":    { "type": "string" },
-          "type":     { "enum": ["string", "number", "datetime", "date", "boolean", "list", "image"] },
-          "required": { "type": "boolean" },
-          "source":   { "enum": ["auto:managed", "auto:preset", "user"] },
-          "usedIn":   { "type": "array", "items": { "type": "string" } },
-          "description": { "type": "string" }
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-zA-Z0-9]*$",
+            "description": "필드의 짧은 이름(camelCase). 그룹 접두사를 여기 다시 넣지 않는다 — 전체 변수명은 상단 group과 합쳐 '<group>.<name>'으로 만들어진다(예: group=user, name=email → user.email). 다른 문서는 이 전체 변수명으로 참조한다."
+          },
+          "label": {
+            "type": "string",
+            "description": "필드의 한글 이름. '[그룹 한글]의 [필드 뜻]' 꼴의 자연어로 쓴다(예: '회원의 닉네임'). 사람용 표의 '한글명' 열과 같아야 한다."
+          },
+          "type": {
+            "enum": ["string", "number", "datetime", "date", "boolean", "list", "image"],
+            "description": "값의 종류(기계용 영문 enum). 사람용 표의 한글 '종류'와 1:1 대응한다 — 글자→string, 숫자→number, 날짜(시각 포함)→datetime, 날짜(날짜만)→date, 참·거짓→boolean, 목록→list, 이미지→image. 표는 한글, 이 블록만 영문이다."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "이 값이 반드시 있어야 하는가. 사람용 표의 '필수'(필수→true) / '선택'(→false)과 대응한다. '값을 넣어야 저장이 되는가'의 뜻이며, 화면에서 입력칸을 필수로 표시하는지와는 다른 층이다(그건 화면 설계서 소관)."
+          },
+          "filledBy": {
+            "enum": ["system", "user"],
+            "description": "이 값을 '누가 채우는가'(주체). system = 시스템이 자동으로 만들어 관리하는 값이라 사람이 입력하지 않는다(고유 번호·만든 시각·수정 시각·상태 등). user = 사람이 입력하거나 선택해서 들어오는 값이다. 두 값뿐이며 늘리지 않는다 — 이 키는 '누가 채우나'라는 하나의 축만 다룬다. 값이 어느 외부 시스템·연동에서 유래했는지(데이터 계보)나, 그 필드를 문서에 누가 넣었는지(스킬 자동 추가 vs 사람 요청)는 이 키의 관심사가 아니다. 소비자는 이 값으로 '입력 폼에 넣을 필드인가, 읽기 전용인가'를 판단한다."
+          },
+          "description": {
+            "type": "string",
+            "description": "이 필드가 무엇인지 비전문가 말로 한 문장. 사람용 표의 '설명' 열과 같아야 한다. 한 변수의 정의는 데이터 모델 이 한 곳에만 둔다(다른 문서에서 재정의하지 않는다)."
+          }
         }
       }
     },
     "relations": {
       "type": "array",
+      "description": "이 그룹이 다른 그룹과 맺는 관계 전부. 사람용 표 아래의 '관계' 문장을 빠짐없이 옮긴다. 관계가 없는 그룹이면 생략하거나 빈 배열로 둔다.",
       "items": {
         "type": "object",
         "required": ["type", "target"],
         "additionalProperties": true,
         "properties": {
-          "type":   { "enum": ["hasOne", "hasMany", "belongsTo", "manyToMany"] },
-          "target": { "type": "string", "description": "대상 그룹의 로컬 이름 또는 DATA.<group> anchor." },
-          "description": { "type": "string" }
+          "type": {
+            "enum": ["hasOne", "hasMany", "belongsTo", "manyToMany"],
+            "description": "관계의 종류를 '이 그룹 기준'으로 적는다. hasMany = 이 그룹 한 건이 상대를 여럿 가진다, belongsTo = 이 그룹 한 건이 상대 하나에 속한다, hasOne = 상대를 하나만 가진다, manyToMany = 양쪽 모두 여럿이다. 짝이 되는 그룹에는 반대 방향으로 적힌다(user hasMany request ↔ request belongsTo user)."
+          },
+          "target": {
+            "type": "string",
+            "description": "관계 상대 그룹. 로컬 이름(user) 또는 anchor(DATA.user) 둘 다 허용한다. 실재하는 그룹이어야 하며, 없는 그룹을 가리키면 크로스참조 점검에서 죽은 링크로 걸린다."
+          },
+          "description": {
+            "type": "string",
+            "description": "이 관계를 비전문가 말 한 문장으로(예: '회원 한 명은 요청을 여러 개 만들 수 있다'). 사람용 표 아래 '관계' 문장과 같아야 한다."
+          }
         }
       }
     }

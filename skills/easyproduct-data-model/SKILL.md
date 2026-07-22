@@ -95,8 +95,7 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
       "label": "<한글명>",
       "type": "string | number | datetime | date | boolean | list | image",
       "required": true,
-      "source": "auto:managed | auto:preset | user",
-      "usedIn": ["<쓰이는 화면>"],
+      "filledBy": "system | user",
       "description": "<설명>"
     }
   ],
@@ -110,11 +109,16 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 - `변수명` `그룹.필드` → 그룹은 상단 `group`, 필드는 짧은 `name`(전체 변수 = `group.name`). 필드 안에 전체 변수를 다시 넣지 않는다.
 - `종류`(한글) → `type`(영문): 글자→`string`, 숫자→`number`, 날짜→`datetime`(시각 포함)·`date`(날짜만), 참·거짓→`boolean`, 목록→`list`, 이미지→`image`.
 - `필수` → `required`: 필수→`true`, 선택→`false`.
-- `표시` → `source`: 자동(관리)→`auto:managed`, 자동(프리셋)→`auto:preset`, 사용자→`user`.
-- `쓰이는 화면` → `usedIn`(배열): `—`면 `[]`.
+- `누가 넣나` → `filledBy`: 시스템→`system`, 사용자→`user`.
 - 그룹 끝의 **관계** 문장 → `relations` 배열.
 
 > 사람에게 보이는 표의 `종류`는 여전히 한글(글자·숫자·날짜…)이고, JSON `type`만 영문이다 — 표는 사람용, JSON은 기계용.
+
+**데이터 모델이 담지 않는 것 — "어느 화면에서 쓰이나".** 그 관계의 원본(SSOT)은 화면 설계서의
+`screendesign.screens`의 `data`(`display`·`io.sends/receives`·`bindings[].vars`)다. 데이터 모델에
+같은 관계를 역방향으로 또 적으면 **이중 기입**이 되어, 화면이 바뀔 때마다 데이터가 안 바뀌었는데도
+데이터 모델이 수정되고(가짜 변경 신호) 양쪽이 조용히 어긋난다. **필요하면 화면 설계서에서 유도해
+답하고, 데이터 모델에 저장하지 않는다.**
 
 ---
 
@@ -153,8 +157,10 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 2. 각 덩어리에 필드를 **자동으로 깐다** (`references/standard-fields-preset.md` 참고):
    - **공통 관리 필드**(`id`·`createdAt`·`updatedAt`, 상태가 있으면 `status`, 소프트삭제면 `deletedAt`)를 **모든 덩어리에**. 사람에겐 개별 나열 대신 "관리 필드 자동 포함"으로 접어 보여도 된다.
    - **종류별 표준 필드 프리셋**: 범위는 회원·거래계 핵심 5~7종(`user`, `payment`, `order`/`deal`, `review`, `report`, `notification` 정도). 프리셋에 없는 덩어리는 공통 관리 필드만 깔고 나머지는 비워 둔다.
-3. 각 필드는 **변수명·한글명(자연어)·종류·필수·설명·쓰이는 화면(선택)**을 갖는다. 자동으로 깐 건
-   **"자동(관리)" / "자동(프리셋)"**으로 표시해 빼기 쉽게 한다.
+3. 각 필드는 **변수명·한글명(자연어)·종류·필수·설명·누가 넣나**를 갖는다. `누가 넣나`는 **값을 채우는
+   주체**만 뜻한다 — 시스템이 자동으로 만들어 관리하면 **시스템**, 사람이 입력·선택하면 **사용자**.
+   (스킬이 자동으로 깔았는지 사람이 요청했는지는 이 열과 무관하다. 자동으로 깐 항목은 문서 본문이 아니라
+   **회신 메시지에서** "이런 표준 항목을 자동으로 깔았습니다"로 알려 빼기 쉽게 한다.)
 4. **데이터 모델 문서(md)를 만든다.** 맨 앞에 **frontmatter**를 채우고("산출물 형식" 참고), 각 그룹 표를 채운 뒤
    **그 표 바로 아래에 태그된 JSON 미러 블록**(` ```json datamodel.group `, 맨 위 `"id": "DATA.<group>"`)을 표에서 생성해 넣는다("JSON 미러" 스키마·매핑 참고).
    **`schemas/data-model.v1.schema.json`을 산출물 옆 `schemas/`에 복사**한다(스킬 자산 그대로).
@@ -167,8 +173,8 @@ frontmatter를 그대로 채운다): `doc_type: data-model`, `version: 1`, `ssot
 
 - 대상은 **시작 입력 (가)로 받았거나 이번에 생성한** 데이터 모델이다. 데이터 모델 문서를 기준선으로,
   **지정된 곳만** 고친다. 지정 안 된 필드·설명은 그대로 둔다.
-- **필드 추가/삭제/이름변경/설명수정** 가능. 변수명을 바꾸면 그 변수를 참조하는 곳(있다면 "쓰이는 화면"
-  목록)에도 반영해야 함을 알린다.
+- **필드 추가/삭제/이름변경/설명수정** 가능. 변수명을 바꾸면 **다른 문서가 그 변수를 참조하고 있을 수
+  있음**(화면 설계서의 `data`, 시나리오 등)을 알리고, 세트 점검기가 죽은 링크를 잡아 준다고 안내한다.
 - **새 그룹(덩어리)의 생성·삭제·병합**은 정보 구조를 바꾸는 일이므로 **사용자 컨펌**을 거친다.
 - **표를 고치면 그 그룹의 JSON 미러를 다시 생성**해 표와 일치시킨다(JSON을 손으로 부분수정하지 않는다). 지정되지 않은 그룹의 표·JSON은 그대로 둔다.
 - **무엇을 어디서 고쳤는지 끝에 한두 줄로 통보**한다.
@@ -180,7 +186,7 @@ frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md
 
 - **frontmatter가 없으면** 맨 앞에 frontmatter(`doc_type`/`version`/`ssot`/`machine.*`)를 얹고, `schemas/data-model.v1.schema.json`을 산출물 옆에 복사한다.
 - **JSON 미러가 없거나 태그가 없으면** 각 그룹 표 아래에 ` ```json datamodel.group ` 태그 블록을 표에서 생성해 넣고(맨 위 `"id": "DATA.<group>"`), 기존 블록은 태그·`id`를 보강한다.
-- **"이 JSON 블록으로 소프트웨어가 자동 점검할 수 있는 것" 설명 절이 없으면** 템플릿과 같은 위치(문서 하단, "표시(source) 읽는 법" 아래)에 채워 넣는다.
+- **"이 JSON 블록으로 소프트웨어가 자동 점검할 수 있는 것" 설명 절이 없으면** 템플릿과 같은 위치(문서 하단, "누가 넣나 읽는 법" 아래)에 채워 넣는다.
 - **끝나면 기계 점검 통과를 "검증 완료"로 보고하지 말 것** — 이 gap-fill은 **구조(기계층)만** 채운 것이라, 산문·미러 충실도(의미) 풀 리뷰를 이어붙이거나 "아직"임을 명시한다(checker-guide "구조 업그레이드").
 - 표에서 기계적으로 변환해 넣을 뿐이다("JSON 미러" 스키마·매핑대로). 일부 그룹만 JSON이 있으면 빠진 그룹만 채운다.
 
@@ -215,7 +221,7 @@ frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md
       "label": "회원",
       "description": "이 서비스에 가입한 사용자.",
       "fields": [
-        { "name": "email", "label": "회원의 이메일", "type": "string", "required": true, "source": "auto:preset", "usedIn": ["로그인", "회원가입"], "description": "로그인·연락에 쓰는 이메일" }
+        { "name": "email", "label": "회원의 이메일", "type": "string", "required": true, "filledBy": "user", "description": "로그인·연락에 쓰는 이메일" }
       ],
       "relations": [ { "type": "hasMany", "target": "request", "description": "회원 한 명은 요청을 여러 개 만들 수 있다." } ]
     }
@@ -264,7 +270,7 @@ frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md
 
 **5. 결과 회신(구조체).** 조회·등록·흡수·정정·확인대기 **어느 경우든**, 처리 결과를 아래 구조체로
    명확히 돌려준다. 요청자는 이 `variable`을 그대로 참조한다. 이 구조체는 **JSON 미러의 필드 오브젝트와
-   같은 스키마**(`name`·`label`·`type`·`required`·`source`·`usedIn`·`description`)에 **`group`·`variable`·`resolution`을 더한** 것이다 —
+   같은 스키마**(`name`·`label`·`type`·`required`·`filledBy`·`description`)에 **`group`·`variable`·`resolution`을 더한** 것이다 —
    "문서(미러)에서 읽은 것"과 "회신으로 받은 것"이 구분 없이 똑같이 쓰이게 한다. `type`은 미러와 같은 **영문 enum**을 쓴다.
 
 ```json
@@ -275,8 +281,7 @@ frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md
   "label":       "요청의 지원자 수",
   "type":        "number",
   "required":    false,
-  "source":      "user",
-  "usedIn":      ["요청 상세"],
+  "filledBy":    "user",
   "description": "이 요청에 지원한 사람 수",
   "resolution":  "created"
 }
@@ -364,8 +369,8 @@ frontmatter나 인라인 JSON이 **없는** 예전 구조의 데이터 모델 md
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.4.4`
-- **릴리즈 날짜**: 2026-07-20
+- **버전**: `0.5.0`
+- **릴리즈 날짜**: 2026-07-22
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
 - 버전·릴리즈 확정 규칙은 저장소의 `VERSIONING.md`, 버전별 변경 내역은 `CHANGELOG.md`에 있다.
