@@ -10,6 +10,9 @@ machine:
   item: group               # 블록 1개 = 데이터 그룹 1개
   schema: ./schemas/data-model.v1.schema.json
   namespace: DATA           # 그룹 anchor는 DATA.<group> (크로스도큐먼트 참조용)
+# 파일을 나눴을 때만 아래를 둔다(기본은 한 파일이라 생략). 부분 파일은 세트 폴더 밖도 가능.
+# 이 선언이 "이 데이터 모델이 무엇으로 이루어졌는가"의 정본이다.
+#  includes: [./data-model-backoffice.md, "../shared/알림, 공지.md"]
 ---
 
 # 데이터 모델: [서비스 이름]
@@ -137,6 +140,7 @@ machine:
 - **표↔JSON 정합** — 사람용 표의 필드와 JSON 사본의 필드가 서로 어긋나지 않는지.
 - **이름 규칙** — `id`가 `DATA.<group>` 꼴이고 `group` 값과 맞는지, 변수명이 `<group>.<name>` 꼴인지.
 - **관계 확인** — `relations`의 `target`이 실제 존재하는 그룹을 가리키는지.
+- **파일을 나눴을 때** — `machine.includes`로 선언한 부분 파일이 실제로 있는지, 같은 그룹이 두 파일에 중복 정의되지 않았는지.
 - **다른 문서와의 참조** — 다른 문서·화면이 가리키는 `DATA.<group>`/필드가 실제로 여기 있는지(끊긴 참조 적발), 반대로 아무 데서도 안 쓰는 필드 탐지.
 
 ---
