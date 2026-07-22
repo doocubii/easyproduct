@@ -105,10 +105,13 @@ function extractBlocks(md, tag) {
     .map(x => { try { return JSON.parse(x[2]); } catch (e) { return { __parseError: e.message }; } });
 }
 
-// ── 스키마 사본 신선도 ──
-// 문서 옆 schemas/*.json 은 스킬이 소유한 고정 자산의 '사본'이다(사본이지만 drift는 아니어야 한다).
-// 사본이 낡으면 낡은 계약으로 검증하게 되어, 지금 계약 위반을 못 잡는다(조용한 통과).
-// 스킬 원본은 이 스크립트 기준 <skills>/easyproduct-*/schemas/<같은 파일명>에 있다.
+// ── 스키마 사본 일치성 ──
+// 문서 옆 schemas/*.json 은 스킬이 소유한 자산의 '사본'이라 스킬 쪽과 같아야 한다.
+// 다르면 둘 중 하나가 뒤처진 것인데, **어느 쪽인지는 알 수 없다** — 문서를 옛 스킬로 만들었을 수도,
+// 반대로 스킬을 업그레이드하지 않아 스킬 쪽이 옛것일 수도 있다. 그래서 방향을 단정하지 않고
+// "다르다"까지만 보고하고 판단은 사람에게 맡긴다.
+// 이 검사가 필요한 이유: 사본이 뒤처지면 그 낡은 계약으로 검증하게 되어 위반을 못 잡는다(조용한 통과).
+// 스킬 자산은 이 스크립트 기준 <skills>/easyproduct-*/schemas/<같은 파일명>에 있다.
 const SKILLS_ROOT = path.resolve(new URL('.', import.meta.url).pathname, '../..');
 const canonicalCache = new Map();
 function canonicalSchemaPath(basename) {
@@ -134,11 +137,20 @@ function sortDeep(v) {
   return v;
 }
 
-// ── 옛 계약 흔적 탐지 ──
-// 지금은 없어진 키가 남아 있으면 그 문서는 옛 형식으로 쓰인 것이다.
-// frontmatter의 version으로는 구분되지 않는다(계약이 제자리에서 다듬어진 구간이 있다) → 형태로 본다.
-const LEGACY_KEYS = ['source', 'usedIn']; // data-model.v1 이전 필드 구성
-function legacyKeysOf(blocks) {
+// ── 옛 계약 흔적 탐지 (※ 한시적 — 0.5.0 이행용) ──
+// 0.5.0에서 data-model.v1의 필드 구성을 제자리에서 바꿨다(source→filledBy, usedIn 제거).
+// 그 전에 만들어진 문서를 알아보려는 것이고, frontmatter의 version으로는 구분되지 않으므로
+// (계약을 제자리에서 다듬었다) 형태로 판별한다.
+//
+// **이 검사는 이번 이행이 끝나면 필요 없다.** 배포 초기라 옛 형식 문서가 거의 없으므로,
+// 다음 업그레이드 때 삭제 여부를 사용자에게 컨펌받고 뺀다.
+//
+// **data-model 문서에만 적용한다.** `source`·`usedIn`은 흔한 낱말이라 다른 문서 타입이 나중에
+// 그 이름을 정당하게 쓸 수 있다 — 전역으로 잡으면 그때 거짓 경보가 된다.
+const LEGACY_DOC_TYPE = 'data-model';
+const LEGACY_KEYS = ['source', 'usedIn'];
+function legacyKeysOf(docType, blocks) {
+  if (docType !== LEGACY_DOC_TYPE) return [];
   const found = new Set();
   for (const o of blocks) {
     if (!o || o.__parseError || !Array.isArray(o.fields)) continue;
@@ -214,22 +226,22 @@ for (let qi = 0; qi < queue.length; qi++) {
   const schemaPath = path.resolve(path.dirname(fp), machine.schema);
   let schema; try { schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')); }
   catch (e) { report(`  ❌ 스키마 로드 실패: ${d.path} → ${machine.schema}`); problems.push('schema'); continue; }
-  // 사본이 스킬 원본과 다르면 낡은 계약으로 검증하고 있는 것 → 갱신해야 한다.
+  // 사본이 스킬 자산과 다르면 둘 중 하나가 뒤처진 것 → 어느 쪽인지는 사람이 판단한다.
   const canon = canonicalSchemaPath(path.basename(schemaPath));
   if (canon) {
     try {
       if (stable(JSON.parse(fs.readFileSync(canon, 'utf8'))) !== stable(schema)) {
-        report(`  ⚠ ${d.path.padEnd(30)} 스키마 사본이 낡음(${machine.schema}) — 스킬 자산으로 갱신 필요`);
-        problems.push('staleschema');
+        report(`  ⚠ ${d.path.padEnd(30)} 스키마 사본이 스킬 자산과 다름(${machine.schema}) — 어느 쪽이 최신인지 확인 필요`);
+        problems.push('schemamismatch');
       }
-    } catch { /* 원본을 못 읽으면 검사 생략 */ }
+    } catch { /* 스킬 자산을 못 읽으면 검사 생략 */ }
   }
   const blocks = extractBlocks(md, machine.tag);
   const errs = [];
   for (const obj of blocks) { if (obj.__parseError) { errs.push('JSON 파싱: ' + obj.__parseError); continue; } validate(obj, schema, fm.doc_type, errs); }
-  // 옛 계약으로 쓰인 문서를 알아보고 "무엇을 해야 하는지"를 알려 준다.
+  // 옛 계약으로 쓰인 문서를 알아보고 "무엇을 해야 하는지"를 알려 준다(※ 한시적 — 위 주석 참고).
   // (스키마 위반만 나열하면 "필드가 빠졌다"로만 보여, 형식을 옮기면 된다는 걸 알 수 없다.)
-  const legacy = legacyKeysOf(blocks);
+  const legacy = legacyKeysOf(fm.doc_type, blocks);
   if (legacy.length) {
     report(`  ⚠ ${d.path.padEnd(30)} 옛 스키마 형식(${legacy.join(', ')}) — 데이터 모델 스킬로 '스키마 이행'이 필요합니다`);
     problems.push('legacy');
