@@ -10,14 +10,15 @@
     "components": {
       "type": "array",
       "minItems": 1,
+      "description": "인벤토리가 정의한 UI 컴포넌트 전부. 산문에 UI.* 정의가 있는 것을 빠짐없이 담고 비워 두지 않는다. 각 엔트리는 id만 나열하는 목록이 아니라 정의(규격·파라미터·variants)를 담아야 한다 — id와 scope만 담으면 산문 헤딩을 grep한 결과와 같아져서, 소프트웨어가 산문을 파싱하지 않아도 되게 한다는 이 블록의 목적이 무너진다. 판단 기준: 엔트리에서 id를 빼도 내용이 남는가.",
       "items": {
         "type": "object",
         "required": ["id", "scope", "spec"],
         "additionalProperties": true,
         "properties": {
           "id":       { "type": "string", "pattern": "^UI\\.[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$", "description": "컴포넌트 anchor. 프리미티브 UI.<컴포넌트>(예: UI.table) / 중앙 UI.<카테고리>.<컴포넌트>[.<variant>] / 로컬 UI.FEAT.<도메인>.<기능명>[.<화면종류>].<컴포넌트명>. UI. 뒤 1마디 이상." },
-          "scope":    { "enum": ["central", "local"], "description": "중앙 재사용(central) / 화면 전용 로컬(local)." },
-          "label":    { "type": "string", "description": "사람이 읽는 이름(선택)." },
+          "scope":    { "enum": ["central", "local"], "description": "이 컴포넌트를 어디서 쓰는지. central = 여러 화면이 함께 쓰는 재사용 컴포넌트라 중앙 인벤토리가 정의를 소유한다. local = 한 화면(또는 한 도메인)에서만 쓰는 전용 컴포넌트라 그 도메인 파일이 정의를 갖고, 중앙 인벤토리에는 없다(점검기는 UI.FEAT.* 참조를 로컬로 보고 중앙 조회를 건너뛴다). 같은 것을 두 화면이 쓰기 시작하면 central로 올린다." },
+          "label":    { "type": "string", "description": "사람이 읽는 이름(예: '기본 버튼'). id만으로 무엇인지 알기 어려울 때 붙인다. 선택." },
           "default":  { "type": "string", "description": "기본 문구(값 안 넘길 때) — 없으면 생략." },
           "params": {
             "type": "array",
@@ -27,9 +28,9 @@
               "required": ["name", "type", "desc"],
               "additionalProperties": true,
               "properties": {
-                "name":     { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]*$", "description": "파라미터 이름(camelCase)." },
-                "type":     { "enum": ["string", "number", "boolean", "list", "node"], "description": "종류. node=내부 콘텐츠 영역(slot/body 등)." },
-                "required": { "type": "boolean", "description": "필수 여부(선택 필드)." },
+                "name":     { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]*$", "description": "이 컴포넌트를 쓸 때 넘기는 값의 이름(camelCase). 산문 '파라미터' 절의 이름과 같게 쓴다." },
+                "type":     { "enum": ["string", "number", "boolean", "list", "node"], "description": "넘기는 값의 종류. string=글자, number=숫자, boolean=참·거짓(켜고 끄는 옵션), list=여러 개의 목록, node=값이 아니라 컴포넌트 안에 끼워 넣는 콘텐츠 영역(slot/body처럼 다른 요소가 들어가는 자리)." },
+                "required": { "type": "boolean", "description": "이 값을 반드시 넘겨야 하는지. false거나 생략하면 넘기지 않아도 되며, 그때 무엇이 쓰이는지는 컴포넌트의 default 또는 이 파라미터의 desc에 적는다." },
                 "desc":     { "type": "string", "description": "무엇을 뜻하는지 한 줄. 필수 — 뜻 없는 파라미터는 두지 않는다." },
                 "values":   { "type": "array", "items": { "type": "string" }, "description": "값이 정해진 경우(enum) 허용 값들. 예: state → guest/member/orgAdmin." }
               }
@@ -37,14 +38,14 @@
           },
           "variants": {
             "type": "array",
-            "description": "variants/states. 이름 + 뜻.",
+            "description": "이 컴포넌트가 가질 수 있는 겉모습·상태의 갈래 전부(예: primary/secondary, hover/disabled/loading). 산문에 나온 갈래를 빠짐없이 담고, 이름만 나열하지 말고 각각이 언제 쓰이는지까지 담는다 — 이름만 있으면 개발자가 언제 어떤 것을 쓸지 알 수 없다.",
             "items": {
               "type": "object",
               "required": ["name", "desc"],
               "additionalProperties": true,
               "properties": {
-                "name": { "type": "string", "description": "variant/state 이름." },
-                "desc": { "type": "string", "description": "그 상태가 무엇인지 한 줄. 필수." }
+                "name": { "type": "string", "description": "그 갈래의 이름(예: primary, disabled). 산문에서 쓰는 이름과 같게." },
+                "desc": { "type": "string", "description": "그 갈래가 무엇이고 언제 쓰는지 한 줄(예: '주요 행동에 쓰는 강조 버튼', '처리 중이라 누를 수 없는 상태'). 필수 — 뜻 없는 이름만 두지 않는다." }
               }
             }
           },

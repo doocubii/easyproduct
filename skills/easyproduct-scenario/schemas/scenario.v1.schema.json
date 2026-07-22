@@ -10,14 +10,15 @@
     "scenarios": {
       "type": "array",
       "minItems": 1,
+      "description": "이 문서가 담은 사용자 여정 전부. 산문의 모든 시나리오를 빠짐없이 담고 비워 두지 않는다. 시나리오는 결정의 원본(SSOT)이 아니라 여러 화면·기능·정책을 ID로 꿰는 '흐름의 축'이므로, 각 엔트리의 값어치는 refs에 있다 — 무엇을 거쳐 가는지가 담겨야 나중에 인수 테스트의 씨앗이 되고 문서 간 모순을 잡아낼 수 있다.",
       "items": {
         "type": "object",
         "required": ["id", "status", "refs"],
         "additionalProperties": true,
         "properties": {
           "id":     { "type": "string", "pattern": "^SCN\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "시나리오 anchor. SCN.<domain>.<name>." },
-          "label":  { "type": "string", "description": "사람이 보는 여정 이름." },
-          "status": { "enum": ["sketch", "derived", "confirmed"], "description": "탐색(sketch) / 파생(derived) / 확정(confirmed)." },
+          "label":  { "type": "string", "description": "이 여정이 무엇인지 알 수 있는 사람용 이름(예: '처음 온 사람이 가입하고 첫 요청을 올린다'). 사용자가 하려는 일을 문장으로 쓴다. 다른 문서는 label이 아니라 id로 참조한다." },
+          "status": { "enum": ["sketch", "derived", "confirmed"], "description": "이 시나리오를 얼마나 믿어도 되는지. sketch = 화면·기능을 도출하려고 먼저 그려 본 탐색용이라 폐기될 수 있다. derived = 확정된 화면 설계서에서 읽기 전용으로 다시 뽑아낸 것이라, 원본이 바뀌면 이 문서도 다시 뽑는다(손으로 고치지 않는다). confirmed = 내용을 검토해 확정한 것. sketch를 확정본처럼 참조하면 안 되므로 반드시 표시한다." },
           "refs": {
             "type": "array",
             "minItems": 1,

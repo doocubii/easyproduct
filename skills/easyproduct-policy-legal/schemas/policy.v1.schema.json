@@ -10,14 +10,15 @@
     "rules": {
       "type": "array",
       "minItems": 1,
+      "description": "정책서가 정한 운영 규칙 전부의 등기부. 산문에 POL.* ID가 붙은 모든 규칙을 빠짐없이 담고 비워 두지 않는다 — 시나리오·화면 설계서가 '이 결정은 어느 정책에 근거하는가'를 POL.*로 가리킬 때 실재를 조회하는 곳이 여기다. 규칙의 본문(조건·처리·예외)은 사람이 읽는 산문이 원본이고, 이 블록은 ID와 그 규칙이 무엇에 관한 것인지(이름·도메인)를 담는 인덱스다.",
       "items": {
         "type": "object",
         "required": ["id", "label"],
         "additionalProperties": true,
         "properties": {
           "id":     { "type": "string", "pattern": "^POL\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*$", "description": "규칙 anchor. POL.<도메인>.<규칙명>." },
-          "label":  { "type": "string", "description": "사람이 보는 규칙 이름." },
-          "domain": { "type": "string", "description": "규칙 도메인(member/content/payment/report/noshow/location/dispute 등)." }
+          "label":  { "type": "string", "description": "이 규칙이 무엇을 정하는지 알 수 있는 사람용 이름(예: '환불·취소 기준'). 산문의 규칙 제목과 같게 쓴다. id는 고정이고 label은 다듬어도 되므로, 다른 문서는 label이 아니라 id로 참조한다." },
+          "domain": { "type": "string", "description": "이 규칙이 속한 영역. id의 가운데 마디(POL.<도메인>.<규칙명>)와 같은 값이며, 같은 영역의 규칙을 묶어 보거나 누락된 영역을 찾을 때 쓴다. 흔한 값: member(회원·가입·탈퇴), content(게시물·신고), payment(결제·환불), report(신고 처리), noshow(약속 불이행), location(위치), dispute(분쟁). 서비스에 맞는 영역이면 이 목록 밖의 값도 쓸 수 있다." }
         }
       }
     }
