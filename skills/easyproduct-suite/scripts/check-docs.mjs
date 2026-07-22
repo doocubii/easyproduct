@@ -105,6 +105,48 @@ function extractBlocks(md, tag) {
     .map(x => { try { return JSON.parse(x[2]); } catch (e) { return { __parseError: e.message }; } });
 }
 
+// ── 스키마 사본 신선도 ──
+// 문서 옆 schemas/*.json 은 스킬이 소유한 고정 자산의 '사본'이다(사본이지만 drift는 아니어야 한다).
+// 사본이 낡으면 낡은 계약으로 검증하게 되어, 지금 계약 위반을 못 잡는다(조용한 통과).
+// 스킬 원본은 이 스크립트 기준 <skills>/easyproduct-*/schemas/<같은 파일명>에 있다.
+const SKILLS_ROOT = path.resolve(new URL('.', import.meta.url).pathname, '../..');
+const canonicalCache = new Map();
+function canonicalSchemaPath(basename) {
+  if (canonicalCache.has(basename)) return canonicalCache.get(basename);
+  let hit = null;
+  try {
+    for (const skill of fs.readdirSync(SKILLS_ROOT)) {
+      const p = path.join(SKILLS_ROOT, skill, 'schemas', basename);
+      if (fs.existsSync(p)) { hit = p; break; }
+    }
+  } catch { /* 스킬 트리를 못 찾으면 검사 생략 */ }
+  canonicalCache.set(basename, hit);
+  return hit;
+}
+const stable = (o) => JSON.stringify(sortDeep(o));   // 서식·키 순서 차이는 무시하고 내용만 비교
+function sortDeep(v) {
+  if (Array.isArray(v)) return v.map(sortDeep);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v).sort()) out[k] = sortDeep(v[k]);
+    return out;
+  }
+  return v;
+}
+
+// ── 옛 계약 흔적 탐지 ──
+// 지금은 없어진 키가 남아 있으면 그 문서는 옛 형식으로 쓰인 것이다.
+// frontmatter의 version으로는 구분되지 않는다(계약이 제자리에서 다듬어진 구간이 있다) → 형태로 본다.
+const LEGACY_KEYS = ['source', 'usedIn']; // data-model.v1 이전 필드 구성
+function legacyKeysOf(blocks) {
+  const found = new Set();
+  for (const o of blocks) {
+    if (!o || o.__parseError || !Array.isArray(o.fields)) continue;
+    for (const f of o.fields) for (const k of LEGACY_KEYS) if (k in f) found.add(k);
+  }
+  return [...found];
+}
+
 // ── 문서 발견 ──
 function discover(root) {
   const idxPath = path.join(root, '00-index.md');
@@ -169,11 +211,29 @@ for (let qi = 0; qi < queue.length; qi++) {
     queue.push({ path: path.relative(root, abs).replace(/\\/g, '/'), abs, viaInclude: d.path });
   }
   if (!machine.tag || !machine.schema) { report(`  · ${d.path.padEnd(30)} (${fm.doc_type}) 기계블록 없음`); continue; }
-  let schema; try { schema = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fp), machine.schema), 'utf8')); }
+  const schemaPath = path.resolve(path.dirname(fp), machine.schema);
+  let schema; try { schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')); }
   catch (e) { report(`  ❌ 스키마 로드 실패: ${d.path} → ${machine.schema}`); problems.push('schema'); continue; }
+  // 사본이 스킬 원본과 다르면 낡은 계약으로 검증하고 있는 것 → 갱신해야 한다.
+  const canon = canonicalSchemaPath(path.basename(schemaPath));
+  if (canon) {
+    try {
+      if (stable(JSON.parse(fs.readFileSync(canon, 'utf8'))) !== stable(schema)) {
+        report(`  ⚠ ${d.path.padEnd(30)} 스키마 사본이 낡음(${machine.schema}) — 스킬 자산으로 갱신 필요`);
+        problems.push('staleschema');
+      }
+    } catch { /* 원본을 못 읽으면 검사 생략 */ }
+  }
   const blocks = extractBlocks(md, machine.tag);
   const errs = [];
   for (const obj of blocks) { if (obj.__parseError) { errs.push('JSON 파싱: ' + obj.__parseError); continue; } validate(obj, schema, fm.doc_type, errs); }
+  // 옛 계약으로 쓰인 문서를 알아보고 "무엇을 해야 하는지"를 알려 준다.
+  // (스키마 위반만 나열하면 "필드가 빠졌다"로만 보여, 형식을 옮기면 된다는 걸 알 수 없다.)
+  const legacy = legacyKeysOf(blocks);
+  if (legacy.length) {
+    report(`  ⚠ ${d.path.padEnd(30)} 옛 스키마 형식(${legacy.join(', ')}) — 데이터 모델 스킬로 '스키마 이행'이 필요합니다`);
+    problems.push('legacy');
+  }
   if (errs.length) problems.push('schema');
   report(`  ${errs.length ? '❌' : '✅'} ${d.path.padEnd(30)} (${fm.doc_type}) 블록:${blocks.length} 위반:${errs.length}`);
   errs.slice(0, 5).forEach(e => report('       - ' + e));
