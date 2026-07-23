@@ -298,7 +298,7 @@ Stage 3.7에서 사용자가 화면 설계를 원할 때만 실행한다. 무겁
   - `screens/user/screen-design-user-index.md` — 공통 UI 정의 + 도메인 파일 링크(사이트맵 순서)
   - `screens/user/screen-design-user-{domain}.md` — 도메인별 화면 전부(사이트맵 순서) + 로컬 컴포넌트
   - `ssot/ui-components-user.md` — 중앙 UI 컴포넌트 인벤토리
-  - (선택) `temp/mockups/user/화면-[이름]-목업.html` — 참고물, `.gitignore` 대상, 재생성 가능
+  - (선택) `temp/mockups/user/목업-[한글이름]([화면 ID]).html` — 참고물, `.gitignore` 대상, 재생성 가능
   전부 생성되면 Stage 4 색인에 추가한다(인덱스·도메인 파일들·인벤토리 각각 링크).
 
 ### 3.8-B: 백오피스 화면 설계 (옵트인 — 별도 호출)
@@ -321,7 +321,7 @@ Stage 3.7에서 사용자가 화면 설계를 원할 때만 실행한다. 무겁
   - `screens/backoffice/screen-design-backoffice-index.md`
   - `screens/backoffice/screen-design-backoffice-{domain}.md`
   - `ssot/ui-components-backoffice.md`
-  - (선택) `temp/mockups/backoffice/화면-[이름]-관리자-목업.html`
+  - (선택) `temp/mockups/backoffice/목업-[한글이름]([화면 ID]).html` (사용자와 같은 규칙, `-관리자` 안 붙임)
   전부 생성되면 Stage 4 색인에 **별도 항목**으로 추가한다(사용자 앱 화면설계서·인벤토리와 합치지 않는다).
 
 ### 3.8-C: 기능 관계도 (옵트인 — easyproduct-ia-designer의 선택 모듈)
