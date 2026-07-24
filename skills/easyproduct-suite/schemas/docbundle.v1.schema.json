@@ -10,6 +10,7 @@
     "docs": {
       "type": "array",
       "minItems": 1,
+      "description": "이 세트에 속한 문서 전부의 목록. 점검기가 폴더를 훑어 추측하는 대신 여기서 '무엇을 검사해야 하는가'를 얻으므로, 만든 문서를 빠짐없이 담고 비워 두지 않는다. 여기 빠진 문서는 점검 대상에서 통째로 누락되고(조용히 통과한 것처럼 보인다), 여기 있는데 파일이 없으면 경로 대조에서 걸린다.",
       "items": {
         "type": "object",
         "required": ["docType", "path"],
@@ -17,8 +18,8 @@
         "properties": {
           "docType": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "그 문서의 봉투 doc_type(예: ia, data-model, policy)." },
           "path":    { "type": "string", "description": "세트 루트 기준 상대 경로(예: ssot/ia.md)." },
-          "role":    { "enum": ["ssot", "supporting", "reference", "handoff"], "description": "문서 역할(선택)." },
-          "optional":{ "type": "boolean", "description": "옵트인/선택 문서 여부(선택)." }
+          "role":    { "enum": ["ssot", "supporting", "reference", "handoff"], "description": "이 문서가 세트에서 맡은 역할. ssot = 결정의 원본이라 어긋나면 이쪽을 진실로 본다. supporting = 원본에서 파생됐거나 원본을 보조하는 문서. reference = 참고용 자료(결정을 담지 않는다). handoff = 다음 단계 도구(spec-kit 등)로 넘기기 위한 인계 문서. 생략 가능하지만, 문서끼리 어긋났을 때 '어느 쪽을 고쳐야 하는가'의 판단 근거이므로 되도록 적는다." },
+          "optional":{ "type": "boolean", "description": "사용자가 원할 때만 만드는 옵트인 문서인지(예: 화면 설계서·시나리오). true면 이 문서가 없어도 세트가 불완전한 것이 아니다 — 점검기가 '빠졌다'고 보고하지 않게 하는 표시다. 생략하면 필수 문서로 본다." }
         }
       }
     }
