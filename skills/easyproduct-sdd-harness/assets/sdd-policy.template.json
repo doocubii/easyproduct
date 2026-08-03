@@ -1,0 +1,78 @@
+{
+  "$comment": "SDD 하네스 정책 — 검사기·훅이 읽는 유일한 파일. <> 부분을 조사(Step 0) 결과로 채운다.",
+
+  "specsDir": "specs",
+  "requiredPhaseFiles": ["spec.md", "plan.md", "tasks.md"],
+  "requiredPinFile": "sources.json",
+  "$comment_pin": "핀 파일은 ②의 필수 항목이다 — 핀이 없으면 ④가 침묵해 상위 변경이 통째로 샌다.",
+
+  "governedGlobs": ["<스택 어댑터: 도메인 로직·라우트·화면·서비스>"],
+  "allowlist": ["<스캐폴딩·엔트리·설정·자동생성·마이그레이션>"],
+  "unmatchedNewFiles": "warn",
+  "provenanceTag": "@sdd",
+  "commentSyntaxes": ["//", "#", "/*"],
+
+  "upstreamDocs": {
+    "$comment": "1)단계 상위 문서 층 — ④⑤⑥의 대상. 조사 Step 0-3에서 정한다.",
+    "globs": [".specify/memory/constitution.md", "CLAUDE.md", "AGENTS.md"],
+    "docsAdapter": "generic",
+    "anchorRegistry": {
+      "blockTagField": "machine.tag",
+      "idPrefixes": [],
+      "genericIdPattern": "REQ-[0-9]+"
+    }
+  },
+
+  "pins": {
+    "location": "specs/<slug>/sources.json",
+    "record": ["version", "contentHash"],
+    "globalPinFile": ".specify/sdd-sources.json",
+    "impactUnit": "file"
+  },
+
+  "sources": {
+    "semverLine": "**Version**:"
+  },
+
+  "specRefs": {
+    "scanFiles": ["spec.md", "plan.md"],
+    "requirementUnit": "frId",
+    "$comment_unit": "spec-kit의 실제 요구 단위는 FR-001/SC-001이다. 헤딩(### User Story·Edge Cases…)은 템플릿 골격이라 요구가 아니다.",
+    "frIdPattern": "(?:FR|SC)-[0-9]+",
+    "orphanRequirement": "warn"
+  },
+
+  "reviewRecord": {
+    "path": "specs/<slug>/upstream-check.md",
+    "requireOnChangeOf": ["spec.md", "plan.md"],
+    "fields": ["anchors", "checkedAt", "by"],
+    "suggestedCommand": "/speckit.analyze"
+  },
+
+  "delegated": {
+    "$comment": "이미 깔린 확장에 넘긴 검사(Step 0-6). 전부 false여도 하네스는 완결 동작한다.",
+    "ciGuard": false,
+    "gates": false,
+    "blueprintIndex": false
+  },
+
+  "mainBranch": "main",
+  "exempt": { "fileTag": "@sdd:exempt", "commitTrailer": "SDD-Exempt" },
+
+  "mode": "warn",
+  "$comment_mode": "브라운필드는 warn으로 시작해 정리한 뒤 block으로 바꾼다.",
+  "severity": {
+    "provenance": "block",
+    "completeness": "block",
+    "coupling": "block",
+    "freshness": "block",
+    "reverseCoupling": "block",
+    "specRefs": "warn",
+    "reviewRecord": "warn"
+  },
+
+  "hooks": {
+    "$comment": "injectOnWarn: 훅(--changed)에서 warn만 있어도 exit 2로 주입할지. mode:\"warn\"은 verify·CI 층에만 적용된다.",
+    "sessionStart": true, "postToolUse": true, "preToolUseDeny": false, "injectOnWarn": true
+  }
+}
