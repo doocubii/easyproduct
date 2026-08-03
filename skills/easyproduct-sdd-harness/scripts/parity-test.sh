@@ -184,6 +184,11 @@ run_scenarios() {   # $1 = 픽스처 이름
   rm -f specs/001-login/sources.json
   cmp_case "위임(ciGuard)"            --full
   git checkout -q . && sed -i 's/"ciGuard": true/"ciGuard": false/' sdd-policy.json
+  # 모노레포: 저장소 루트가 아닌 하위 폴더에 정책이 있고 거기서 실행해도 찾아야 한다(cwd 우선 탐색).
+  mkdir -p track && cp sdd-policy.json track/ && cd track || exit 1
+  cmp_case "모노레포: 하위 폴더 정책 자동 발견" --full
+  cmp_case "모노레포: --policy 상대경로(cwd 기준)" --full --policy sdd-policy.json
+  cd .. && rm -rf track
 }
 
 # ─────────────────────────── 회귀 단언 ───────────────────────────

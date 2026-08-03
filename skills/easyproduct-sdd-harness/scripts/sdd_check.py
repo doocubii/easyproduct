@@ -186,10 +186,18 @@ def walk_files():
 # ─────────────────────────────── 정책 ───────────────────────────────
 
 def find_policy():
-    for c in [OPTS['policy'], 'sdd-policy.json', '.specify/sdd-policy.json']:
-        if not c:
-            continue
-        p = c if os.path.isabs(c) else os.path.join(ROOT, c)
+    """정책 탐색은 **cwd 기준을 먼저, 저장소 루트 기준을 나중에** 본다.
+
+    모노레포에서는 ROOT(git 루트) ≠ spec-kit 루트라, ROOT 기준으로만 찾으면 트랙 안에 있는 정책을
+    영영 못 찾아 `--policy`가 사실상 필수가 된다(그리고 `--policy`에 준 상대경로마저 ROOT 기준으로
+    해석돼 어긋난다). 자세한 것은 `references/monorepo.md`."""
+    candidates = []
+    if OPTS['policy']:
+        c = OPTS['policy']
+        candidates += [c] if os.path.isabs(c) else [os.path.join(os.getcwd(), c), os.path.join(ROOT, c)]
+    for n in ('sdd-policy.json', '.specify/sdd-policy.json'):
+        candidates += [os.path.join(os.getcwd(), n), os.path.join(ROOT, n)]
+    for p in candidates:
         if os.path.exists(p):
             return p
     return None

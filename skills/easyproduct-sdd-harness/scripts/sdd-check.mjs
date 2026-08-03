@@ -125,12 +125,16 @@ function walkFiles(dir = '', acc = []) {
 
 // ─────────────────────────────── 정책 ───────────────────────────────
 
+// 정책 탐색은 **cwd 기준을 먼저, 저장소 루트 기준을 나중에** 본다.
+// 모노레포에서는 ROOT(git 루트) ≠ spec-kit 루트라, ROOT 기준으로만 찾으면 트랙 안에 있는 정책을
+// 영영 못 찾아 `--policy`가 사실상 필수가 된다(그리고 `--policy`에 준 상대경로마저 ROOT 기준으로
+// 해석돼 어긋난다). 자세한 것은 `references/monorepo.md`.
 function findPolicy() {
-  const candidates = [opts.policy, 'sdd-policy.json', '.specify/sdd-policy.json'].filter(Boolean);
-  for (const c of candidates) {
-    const p = resolve(ROOT, c);
-    if (existsSync(p)) return p;
-  }
+  const names = ['sdd-policy.json', '.specify/sdd-policy.json'];
+  const candidates = [];
+  if (opts.policy) candidates.push(resolve(process.cwd(), opts.policy), resolve(ROOT, opts.policy));
+  for (const n of names) candidates.push(resolve(process.cwd(), n), resolve(ROOT, n));
+  for (const p of candidates) if (existsSync(p)) return p;
   return null;
 }
 
