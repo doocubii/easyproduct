@@ -26,6 +26,10 @@ const REPO_ROOT = join(SKILLS_DIR, '..');
 const PURE_ID = new Set(['id', 'scope', 'group']);  // 식별자/유도값 — 이것만 required면 '빈 껍데기'
 // suite는 오케스트레이터라 자체 산출 문서가 없다 — "정합성 점검" 절 대신 Stage 4가 그 역할(하지만 "점검 3층"은 참조해야 한다).
 const NO_CONSISTENCY_SECTION = new Set(['easyproduct-suite']);
+// installer/wirer 스킬 — 문서를 **산출하지 않고** 대상 프로젝트에 게이트를 설치한다.
+// 점검 3층은 "스킬이 만든 문서"를 점검하는 계약이라 대상이 아니다(억지 참조는 '빈 껍데기' 정신에 어긋난다).
+// 대신 같은 정신의 대체 요구를 건다: 자기가 깐 게이트가 **무엇을 보장하지 않는지(한계)**를 SKILL.md에 명시할 것.
+const INSTALLER_SKILLS = new Set(['easyproduct-sdd-harness']);
 
 const errors = [];
 const notes = [];
@@ -101,6 +105,15 @@ function lintSkillDoc(skillName, skillDir) {
     return;
   }
   const text = readFileSync(md, 'utf8');
+  // C0: installer 스킬은 문서 3층 대신 '한계 명시'를 요구한다(게이트를 약화시키지 않는 대체 요구).
+  if (INSTALLER_SKILLS.has(skillName)) {
+    if (!text.includes('한계')) {
+      errors.push(
+        `${rel(md)}: installer 스킬인데 "한계" 명시 없음 — 설치한 게이트가 무엇을 보장하지 않는지 적어야 한다.`,
+      );
+    }
+    return;
+  }
   // C1: 3층 계약을 참조하는가.
   if (!text.includes('점검 3층')) {
     errors.push(`${rel(md)}: "점검 3층" 참조 없음 — 정합성 점검이 3층 계약(checker-guide)에 연결돼야 한다.`);
