@@ -34,6 +34,7 @@
 - `references/propagation-map.md` + `assets/propagation-map.json` — **파장 지도**(정본). 상위 결정이 바뀌면 어느 문서가 따라와야 하는지 (변경 전파 모드가 하류 목록을 계산하는 근거)
 - `assets/review-template.md` + `schemas/review.v1.schema.json` — **풀 리뷰 산출물**. LLM 층 점검에 흔적을 남겨 '건너뛰어도 표가 안 나는 단계'를 없앤다
 - `scripts/check-docs-test.sh` — 점검기 회귀 검사(파장·신선도 층 포함)
+- `scripts/check-docs.mjs --emit-needs` — 화면 동작에서 **서버 요구 목록을 기계 추출**(백엔드 설계의 입력. 파일로 저장하지 않는 읽기 전용 파생물)
 - `references/skill-handoff-guide.md` — 단계 사이에 무엇을 넘기고, 설계서를 어떻게 back-fill하며, 모드 기본값과 게이트 라우팅을 어떻게 정하는지 (각 Stage 진입 전 해당 절을 읽음)
 - `assets/doc-bundle-index-template.md` — 세트를 한 장으로 묶는 색인 문서 구조 (Stage 4에서 이대로 채움)
 - `assets/speckit-handoff-template.md` — spec-kit(SDD)으로 넘길 인계 안내문 구조 (Stage 5에서 이대로 채움)

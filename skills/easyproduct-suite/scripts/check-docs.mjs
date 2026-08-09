@@ -182,15 +182,19 @@ function discover(root) {
 // ── 메인 ──
 const args = process.argv.slice(2);
 const printSnapshot = args.includes('--print-snapshot');
+const emitNeeds = args.includes('--emit-needs');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
   console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
+  console.error('  --emit-needs     : 화면 동작에서 **서버 요구 목록**을 기계 판독 JSON으로 추출(백엔드 설계의 입력)');
   process.exit(2);
 }
 
 const problems = [];
-const report = (m) => console.log(m);
+// --emit-needs 는 stdout이 **기계 판독 JSON 전용**이어야 하므로 사람용 리포트를 stderr로 보낸다
+// (파이프로 받아 쓰는 쪽이 파싱에 실패하지 않게).
+const report = (m) => (emitNeeds ? console.error(m) : console.log(m));
 const { via, docs } = discover(root);
 report(`문서 발견: ${docs.length}개 (${via === 'manifest' ? '매니페스트' : '폴더 스캔'})`);
 
@@ -329,7 +333,8 @@ for (const doc of loaded) {
     for (const s of (o.screens || [])) {
       const dat = Array.isArray(s.data) ? {} : (s.data || {});
       for (const a of (dat.io || [])) {
-        screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null, op: a.op || null, doc: doc.path });
+        screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
+                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [], op: a.op || null, doc: doc.path });
       }
     }
   }
@@ -409,6 +414,39 @@ for (const b of beBasis) {
 
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
+
+// ── 서버 요구 목록 추출 (--emit-needs) ──
+// 화면 동작(`data.io`)에는 요구가 이미 **구조화돼** 있다 — 방향(target)·보내고 받는 변수(데이터 모델
+// 실재 변수로 검증됨)·트리거 UI·소속 화면. 그래서 "무엇이 서버에 필요한가"의 목록은 **LLM 판단 없이
+// 기계로 전수 추출**된다. 백엔드 설계는 이걸 입력으로 받으면 빠뜨릴 수가 없다.
+//
+// **파일로 저장하지 않는다.** 이건 언제든 재생성 가능한 읽기 전용 파생물이라, 문서로 굳히면
+// 화면과 이중 기입이 되어 조용히 어긋난다(세트가 `usedIn`을 뺀 것과 같은 이유).
+//
+// 정직한 한계: **의미 요건**(예: "자격 오류 시 어느 쪽이 틀렸는지 특정하지 않는다")과 **동작 단위 정책
+// 링크**는 산문에만 있어 여기 안 담긴다 — 그건 사람/LLM이 화면 산문에서 읽어야 한다.
+if (emitNeeds) {
+  const covered = new Map();
+  for (const b of beBasis) if (b.kind === 'screen-io') {
+    if (!covered.has(b.ref)) covered.set(b.ref, []);
+    covered.get(b.ref).push(b.itfId);
+  }
+  const needs = screenIo
+    .filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server')
+    .map((x) => ({
+      id: x.id, screen: x.screen, action: x.action, target: x.target,
+      ui: x.ui ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
+      doc: x.doc, coveredBy: covered.get(x.id) ?? [],
+    }));
+  const untargeted = screenIo.filter((x) => !x.target).length;
+  console.log(JSON.stringify({
+    needs,
+    note: '화면 동작에서 기계 추출한 서버 요구 목록(읽기 전용 파생물 — 파일로 저장하지 말 것).',
+    limits: '의미 요건·동작 단위 정책 링크는 산문에만 있어 담기지 않는다.',
+    untargeted,
+  }, null, 2));
+  process.exit(0);
+}
 
 // ── 요구 → 계약 커버리지 (백엔드 문서가 있을 때만) ──
 // io는 서버 통신 전용이 아니다. `target`의 첫 마디로 갈래를 판정하고, server인 것만 대조한다.

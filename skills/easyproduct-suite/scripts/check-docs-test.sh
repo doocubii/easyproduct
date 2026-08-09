@@ -320,5 +320,21 @@ expect_out "파장 지도에 없는 종류를 센다" "파장 지도에 없는 �
 expect_out "탈출구(derivesFrom)를 알려준다" "derivesFrom"
 
 echo
+echo "[9] 서버 요구 기계 추출(--emit-needs)"
+# 화면 동작에는 요구가 이미 구조화돼 있다 — 목록은 LLM 판단 없이 기계로 나와야 한다.
+node "$CHECK" "$SET" --emit-needs > "$WORK/needs.json" 2>/dev/null
+if python3 -c "
+import json,sys
+d=json.load(open('$WORK/needs.json'))
+n=d['needs']
+assert any(x['id']=='FEAT.auth.login.submit' for x in n), 'server 요구가 추출되지 않음'
+assert not any(x['id']=='FEAT.auth.login.saveDraft' for x in n), 'local 동작이 섞여 들어옴'
+assert any(x['coveredBy'] for x in n), '덮은 인터페이스가 함께 오지 않음'
+assert d['untargeted']>0, 'target 미분류 건수가 보고되지 않음'
+assert '의미 요건' in d['limits'], '한계가 함께 나오지 않음'
+"; then ok "server 요구만 추출 · 덮은 인터페이스·미분류·한계 동반"; else bad "--emit-needs 출력이 계약과 다름"; fi
+if python3 -c "import json;json.load(open('$WORK/needs.json'))" 2>/dev/null; then ok "stdout이 순수 JSON(리포트는 stderr)"; else bad "stdout에 리포트가 섞임"; fi
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
