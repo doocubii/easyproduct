@@ -3,6 +3,7 @@ doc_type: screen-design
 doc_id: [scope]-[domain]
 title: "화면 설계서 · 도메인: [도메인 한국어 이름]"
 version: 1
+revision: 1                 # 결정 개정 번호. 이 문서의 **결정**이 바뀔 때만 +1(문구·오타 수정은 올리지 않는다).
 ssot: prose                 # 글 정의가 원본, screens 블록은 파생 미러
 machine:
   lang: json
