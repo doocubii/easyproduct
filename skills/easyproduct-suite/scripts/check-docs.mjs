@@ -6,7 +6,7 @@
 // suite 스킬이 문서 세트를 점검할 때(Stage 4) 직접 실행한다. 프로젝트 폴더로 복사되지는 않는다.
 // (사용자가 소스를 원하면 suite가 이 파일을 보여주거나 내려준다.)
 //
-// 사용법:  node <이 파일 경로> <문서세트-루트>
+// 사용법:  node <이 파일 경로> <문서세트-루트> [--print-snapshot]
 //   - <루트>/00-index.md 의 docbundle.docs 매니페스트가 있으면 그걸로 문서를 발견
 //   - 없으면 <루트> 아래 *.md 를 훑는다
 //   - 어느 쪽이든, 문서 frontmatter의 machine.includes 로 선언된 부분 파일은 반드시 따라간다
@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
@@ -179,8 +180,14 @@ function discover(root) {
 }
 
 // ── 메인 ──
-const root = process.argv[2];
-if (!root) { console.error('사용법: node tools/check-docs.mjs <문서세트-루트>'); process.exit(2); }
+const args = process.argv.slice(2);
+const printSnapshot = args.includes('--print-snapshot');
+const root = args.find(a => !a.startsWith('--'));
+if (!root) {
+  console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
+  console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
+  process.exit(2);
+}
 
 const problems = [];
 const report = (m) => console.log(m);
@@ -190,7 +197,8 @@ report(`문서 발견: ${docs.length}개 (${via === 'manifest' ? '매니페스�
 // 레지스트리(anchor 등기부)
 const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set() };
 const groupOrigin = new Map(); // group -> 그 그룹을 정의한 문서 경로(중복 정의 적발용)
-const loaded = []; // {docType, path, md, fm, blocks:[{tag,obj}]}
+const loaded = []; // {docType, path, md, fm, blocks:[{tag,obj}]} — 기계 블록이 있는 문서만
+const allDocs = []; // {docType, path, revision} — 기계 블록 유무와 무관한 전체(파장·신선도용)
 
 // 처리 큐. machine.includes로 선언된 부분 파일을 따라가며 넓힌다(폴더 밖도 가능).
 // 같은 파일이 폴더 스캔과 includes 양쪽에서 잡힐 수 있으므로 실제 경로로 중복 제거한다.
@@ -214,6 +222,9 @@ for (let qi = 0; qi < queue.length; qi++) {
   const fm = parseFrontmatter(md);
   if (!fm) { report(`  · ${d.path} (frontmatter 없음 — 스킵)`); continue; }
   if (d.docType && fm.doc_type !== d.docType) { report(`  ❌ frontmatter 불일치: ${d.path} 매니페스트=${d.docType} 실제=${fm.doc_type}`); problems.push('doctype'); }
+  // 파장·신선도는 **기계 블록이 없는 문서도** 대상이다(기획서·약관·화면 색인이 바로 그런 문서이고,
+  // 실제로 그 문서들이 파장에서 누락돼 사고가 났다). 그래서 스키마 검증과 별개로 여기서 먼저 적재한다.
+  allDocs.push({ docType: fm.doc_type, path: d.path, revision: fm.revision == null ? null : Number(fm.revision) });
   const machine = fm.machine || {};
   // 부분 파일 선언(machine.includes)을 큐에 넣는다 — 세트 폴더 밖이어도 반드시 따라간다.
   // 이 선언이 "이 문서가 무엇으로 이루어졌는가"의 정본이다(폴더 위치·매니페스트에 기대지 않는다).
@@ -317,6 +328,95 @@ for (const doc of loaded) {
 }
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
+
+// ── 3차: 파장·신선도 (상위 결정이 바뀌었는데 하류가 안 따라갔나) ──
+// 죽은 링크가 "가리킨 것이 실재하나"라면, 이 검사는 **"바뀐 것을 따라갔나"**를 본다.
+// 산문에만 있는 결정은 ID 참조가 없어 원리적으로 죽은 링크로 안 잡히므로, 파장 지도 + 리뷰 스냅샷으로 본다.
+// 경고 층이다 — 오탐이 있을 수 있어 종료코드를 올리지 않고, 리뷰 산출물 갱신으로 해제된다.
+report('\n[3] 파장 · 신선도');
+{
+  // 파장 지도(정본은 스킬 자산). 없으면 이 검사를 생략한다(무엇을 안 봤는지는 밝힌다).
+  let mapDoc = null;
+  try {
+    mapDoc = JSON.parse(fs.readFileSync(path.join(SKILLS_ROOT, 'easyproduct-suite', 'assets', 'propagation-map.json'), 'utf8'));
+  } catch { /* 스킬 자산을 못 읽는 환경 */ }
+
+  if (!mapDoc) {
+    report('  · 파장 지도를 찾을 수 없어 생략(스킬 자산 밖에서 실행 중)');
+  } else {
+    // docType → 실제 경로들. 매니페스트에 derivesFrom 예외가 있으면 그 문서만 덮어쓴다.
+    const pathsOfType = new Map();
+    for (const d of allDocs) {
+      if (!pathsOfType.has(d.docType)) pathsOfType.set(d.docType, []);
+      pathsOfType.get(d.docType).push(d.path);
+    }
+    const overrideOf = new Map(docs.filter(d => Array.isArray(d.derivesFrom)).map(d => [d.path, d.derivesFrom]));
+
+    // 상류 경로 → 하류 경로 목록
+    const downstream = new Map();
+    const addEdge = (up, down) => {
+      if (up === down) return;
+      if (!downstream.has(up)) downstream.set(up, new Set());
+      downstream.get(up).add(down);
+    };
+    for (const d of allDocs) {
+      const ups = overrideOf.get(d.path) ?? (mapDoc.derivesFrom[d.docType] || []).flatMap(t => pathsOfType.get(t) || []);
+      for (const up of ups) addEdge(up, d.path);
+    }
+
+    // 최신 리뷰 산출물의 스냅샷(sources)을 기준선으로 삼는다.
+    const reviews = loaded
+      .filter(d => d.docType === 'review')
+      .flatMap(d => d.blocks.filter(o => !o.__parseError).map(o => ({ path: d.path, snap: o })))
+      .sort((a, b) => String(a.snap.reviewedAt).localeCompare(String(b.snap.reviewedAt)));
+    const latest = reviews[reviews.length - 1] || null;
+    const baseline = new Map();
+    if (latest) for (const s of (latest.snap.sources || [])) baseline.set(s.path, s);
+
+    const cur = new Map();   // path → {revision, hash}
+    for (const d of allDocs) {
+      const abs = path.resolve(root, d.path);
+      try {
+        const text = fs.readFileSync(abs, 'utf8');
+        const fm = parseFrontmatter(text) || {};
+        const rev = fm.revision == null ? null : Number(fm.revision);
+        cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
+      } catch { /* 위에서 이미 보고됨 */ }
+    }
+
+    if (printSnapshot) {
+      // 리뷰 산출물을 쓸 때 붙일 sources 스냅샷을 그대로 출력한다(사람이 해시를 손으로 만들지 않게).
+      const snap = [...cur.entries()].map(([p, v]) => (v.revision == null ? { path: p, contentHash: v.hash } : { path: p, revision: v.revision, contentHash: v.hash }));
+      report('  스냅샷(리뷰 산출물의 sources에 붙여 넣으세요):');
+      report(JSON.stringify(snap, null, 2).split('\n').map(l => '    ' + l).join('\n'));
+    }
+
+    if (!latest) {
+      report('  ⚠ 리뷰 산출물이 없습니다 — LLM 층(산문·미러 충실도, 파장 확인) **미실행**으로 봅니다.');
+      report(`     기계 점검 통과는 "구조는 맞음"이지 "검증 완료"가 아닙니다. 템플릿: easyproduct-suite/assets/review-template.md`);
+    } else {
+      report(`  기준선: ${latest.path} (reviewedAt ${latest.snap.reviewedAt}, sources ${(latest.snap.sources || []).length}개)`);
+      let stale = 0, unpinned = 0, silent = 0;
+      for (const [up, downs] of [...downstream.entries()].sort()) {
+        const c = cur.get(up); if (!c) continue;
+        const b = baseline.get(up);
+        if (!b) { unpinned++; continue; }
+        const revChanged = b.revision != null && c.revision != null && b.revision !== c.revision;
+        const hashChanged = b.contentHash && b.contentHash !== c.hash;
+        if (revChanged) {
+          stale++;
+          report(`  ⚠ ${up} 개정됨(r${b.revision}→r${c.revision}) — 하류 재검토 필요: ${[...downs].join(', ')}`);
+        } else if (hashChanged) {
+          silent++;
+          report(`  ⚠ ${up} 이 개정 번호 없이 수정됨 — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+        }
+      }
+      if (unpinned) report(`  · 리뷰 기준선에 없는 상류 ${unpinned}개(그 문서들은 신선도 판정 불가 — 다음 리뷰에서 sources에 넣으세요)`);
+      if (!stale && !silent) report('  ✅ 리뷰 이후 상류 변경 없음');
+    }
+    report(`  파장 지도: 상류 ${downstream.size}개 → 하류 관계 ${[...downstream.values()].reduce((n, s) => n + s.size, 0)}건`);
+  }
+}
 
 // 결과
 report(`\n등기부: FEAT ${reg.feat.size} · 화면 ${reg.screen.size} · 데이터그룹 ${reg.group.size} · POL ${reg.pol.size} · UI ${reg.ui.size} · SCN ${reg.scn.size} · 토큰 ${reg.token.size}`);

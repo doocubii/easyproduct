@@ -4,7 +4,9 @@
   "title": "EasyProduct 문서 묶음 인덱스 — 문서 매니페스트 블록 (payload v1)",
   "description": "문서 세트에 어떤 문서가 어디에 있는지 기계가 읽는 매니페스트. 하네스가 이 한 블록에서 모든 문서·타입·경로를 발견하고, 각 경로의 봉투 doc_type을 대조한다. 사람용 표가 원본이고 이 블록은 그 미러. 봉투(frontmatter)는 별도 규약이다.",
   "type": "object",
-  "required": ["docs"],
+  "required": [
+    "docs"
+  ],
   "additionalProperties": true,
   "properties": {
     "docs": {
@@ -13,13 +15,41 @@
       "description": "이 세트에 속한 문서 전부의 목록. 점검기가 폴더를 훑어 추측하는 대신 여기서 '무엇을 검사해야 하는가'를 얻으므로, 만든 문서를 빠짐없이 담고 비워 두지 않는다. 여기 빠진 문서는 점검 대상에서 통째로 누락되고(조용히 통과한 것처럼 보인다), 여기 있는데 파일이 없으면 경로 대조에서 걸린다.",
       "items": {
         "type": "object",
-        "required": ["docType", "path"],
+        "required": [
+          "docType",
+          "path"
+        ],
         "additionalProperties": true,
         "properties": {
-          "docType": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "그 문서의 봉투 doc_type(예: ia, data-model, policy)." },
-          "path":    { "type": "string", "description": "세트 루트 기준 상대 경로(예: ssot/ia.md)." },
-          "role":    { "enum": ["ssot", "supporting", "reference", "handoff"], "description": "이 문서가 세트에서 맡은 역할. ssot = 결정의 원본이라 어긋나면 이쪽을 진실로 본다. supporting = 원본에서 파생됐거나 원본을 보조하는 문서. reference = 참고용 자료(결정을 담지 않는다). handoff = 다음 단계 도구(spec-kit 등)로 넘기기 위한 인계 문서. 생략 가능하지만, 문서끼리 어긋났을 때 '어느 쪽을 고쳐야 하는가'의 판단 근거이므로 되도록 적는다." },
-          "optional":{ "type": "boolean", "description": "사용자가 원할 때만 만드는 옵트인 문서인지(예: 화면 설계서·시나리오). true면 이 문서가 없어도 세트가 불완전한 것이 아니다 — 점검기가 '빠졌다'고 보고하지 않게 하는 표시다. 생략하면 필수 문서로 본다." }
+          "docType": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "그 문서의 봉투 doc_type(예: ia, data-model, policy)."
+          },
+          "path": {
+            "type": "string",
+            "description": "세트 루트 기준 상대 경로(예: ssot/ia.md)."
+          },
+          "role": {
+            "enum": [
+              "ssot",
+              "supporting",
+              "reference",
+              "handoff"
+            ],
+            "description": "이 문서가 세트에서 맡은 역할. ssot = 결정의 원본이라 어긋나면 이쪽을 진실로 본다. supporting = 원본에서 파생됐거나 원본을 보조하는 문서. reference = 참고용 자료(결정을 담지 않는다). handoff = 다음 단계 도구(spec-kit 등)로 넘기기 위한 인계 문서. 생략 가능하지만, 문서끼리 어긋났을 때 '어느 쪽을 고쳐야 하는가'의 판단 근거이므로 되도록 적는다."
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "사용자가 원할 때만 만드는 옵트인 문서인지(예: 화면 설계서·시나리오). true면 이 문서가 없어도 세트가 불완전한 것이 아니다 — 점검기가 '빠졌다'고 보고하지 않게 하는 표시다. 생략하면 필수 문서로 본다."
+          },
+          "derivesFrom": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "이 문서가 파생된 상류 문서들의 경로(세트 루트 기준). **표준 파장 지도(easyproduct-suite/assets/propagation-map.json)를 이 문서에 한해 덮어쓰는 예외 필드다.** 파생 관계는 문서 종류 사이의 관계라 프로젝트마다 같으므로 보통은 적지 않는다 — 표준과 다른 상류를 가질 때만 적는다(손으로 유지되는 중복 지도는 틀어지면 거짓 경보의 원인이 된다)."
+          }
         }
       }
     }

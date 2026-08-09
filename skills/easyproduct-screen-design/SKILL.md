@@ -476,6 +476,18 @@ temp/mockups/{scope}/
 - `schemas/ui-components.v1.schema.json` — 인벤토리 `uicomponents.list` 블록의 JSON Schema 계약(스킬 소유 고정 자산, `ssot/schemas/`로 복사).
 
 
+## 문서를 고칠 때 — `revision` 올리기 (세트 공통 규율)
+
+이 문서의 frontmatter에는 **`revision`(결정 개정 번호, 정수)**가 있다. 최초 생성 시 `1`.
+
+- **그 문서가 담은 결정이 바뀌면 +1 한다.** 새 규칙·바뀐 정의·삭제된 항목처럼 **하류가 따라와야 하는 변경**이 기준이다.
+- **오타·문구 다듬기·서식·링크 수정은 올리지 않는다.** 안 그러면 신선도 경고가 상시로 떠서 무시된다.
+- 올리는 주체는 **이 스킬(에이전트)**이다. 사용자에게 묻지 않는다.
+- `version`(payload 계약 버전)과 **다른 축**이다 — `version`은 스키마 계약, `revision`은 결정의 세대.
+- **왜**: 상위 결정이 바뀌었는데 하류 문서가 그대로인 상태를 점검기가 잡으려면(파장·신선도),
+  "결정이 바뀌었다"는 신호가 필요하다. 근거: `easyproduct-suite/references/checker-guide.md`
+  "변경 전파와 신선도", 전파 절차는 suite의 Step 1-B.
+
 ---
 
 ## 메타 정보 (버전·릴리즈·배포·라이선스)
