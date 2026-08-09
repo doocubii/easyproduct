@@ -8,7 +8,10 @@
 
 ---
 
-## [Unreleased]
+## [0.7.0] — 2026-08-09 (beta)
+
+> 상태: `beta` 머지로 **버전 0.7.0 확정**, 릴리즈 날짜 = beta 머지일(2026-08-09).
+> 변경 전파(change propagation) 층 신설 — 상위 결정이 바뀌었을 때 하류를 구조에서 예측해 재도출한다.
 
 ### Added — 변경 전파(change propagation)
 
