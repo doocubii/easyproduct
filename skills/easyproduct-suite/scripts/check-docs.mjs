@@ -194,6 +194,30 @@ const report = (m) => console.log(m);
 const { via, docs } = discover(root);
 report(`문서 발견: ${docs.length}개 (${via === 'manifest' ? '매니페스트' : '폴더 스캔'})`);
 
+// 매니페스트로 발견했으면 **폴더와 대조**한다. 색인이 낡아 새 문서가 빠져 있으면 그 문서들은
+// 스키마 검증·참조 점검·파장 전부에서 통째로 빠지는데, 알려주지 않으면 "통과"로 읽힌다(조용한 통과).
+// 색인은 파생 스냅샷이라 낡는 게 정상이므로, 오류가 아니라 "재생성 필요"로 보고한다.
+const unlisted = [];
+if (via === 'manifest') {
+  const listed = new Set(docs.map((d) => d.path));
+  const SKIP_DIR = /(^|\/)(schemas|temp|node_modules|\.git)(\/|$)/;
+  const walkMd = (dir, acc = []) => {
+    for (const e of fs.readdirSync(path.join(root, dir || '.'), { withFileTypes: true })) {
+      const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (SKIP_DIR.test(rel)) continue;
+      if (e.isDirectory()) walkMd(rel, acc);
+      else if (e.name.endsWith('.md') && rel !== '00-index.md' && !listed.has(rel)) acc.push(rel);
+    }
+    return acc;
+  };
+  try { unlisted.push(...walkMd('')); } catch { /* 스캔 실패는 무시 */ }
+  if (unlisted.length) {
+    report(`  ⚠ 매니페스트에 없는 문서 ${unlisted.length}건 — **점검 대상에서 빠졌다**(색인 재생성 필요)`);
+    report(`     ${unlisted.slice(0, 5).join(', ')}${unlisted.length > 5 ? ` 외 ${unlisted.length - 5}건` : ''}`);
+    report('     → 색인(00-index.md)을 다시 만들면 편입된다. `machine.includes`로 딸린 부분 파일은 자동 추적되므로 여기 안 나온다.');
+  }
+}
+
 // 레지스트리(anchor 등기부)
 const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set() };
 const groupOrigin = new Map(); // group -> 그 그룹을 정의한 문서 경로(중복 정의 적발용)
@@ -482,6 +506,25 @@ report('\n[3] 파장 · 신선도');
       const snap = [...cur.entries()].map(([p, v]) => (v.revision == null ? { path: p, contentHash: v.hash } : { path: p, revision: v.revision, contentHash: v.hash }));
       report('  스냅샷(리뷰 산출물의 sources에 붙여 넣으세요):');
       report(JSON.stringify(snap, null, 2).split('\n').map(l => '    ' + l).join('\n'));
+    }
+
+    // 지도에 없는 문서 종류는 상류로도 하류로도 안 잡힌다 — **조용히 파장 대상 밖**이 된다.
+    // 프로젝트가 세트 표준 밖의 문서를 갖는 건 정상이지만(요청서·오픈이슈 등), 그 사실이 안 보이면
+    // "이 문서는 파장을 안 탄다"를 아무도 모른 채 상류가 바뀌어도 따라가지 않는다.
+    {
+      const known = new Set(Object.keys(mapDoc.derivesFrom));
+      for (const ups of Object.values(mapDoc.derivesFrom)) for (const u of ups) known.add(u);
+      const unknown = new Map();
+      for (const d of allDocs) {
+        if (known.has(d.docType) || overrideOf.has(d.path)) continue;
+        unknown.set(d.docType, (unknown.get(d.docType) || 0) + 1);
+      }
+      if (unknown.size) {
+        report(`  ⚠ 파장 지도에 없는 문서 종류 ${unknown.size}종 — 이 문서들은 **파장 대상 밖**이다`);
+        report(`     ${[...unknown.entries()].map(([t, c]) => `${t} ${c}건`).join(' · ')}`);
+        report('     → 프로젝트 고유 문서면 매니페스트 항목에 `derivesFrom`(선택)으로 상류를 적어 주면 편입된다.');
+        report('       세트 표준 문서인데 빠진 것이면 파장 지도(스킬 자산)를 고쳐야 한다.');
+      }
     }
 
     // 옛 버전으로 만든 세트를 알아보고 **무엇을 해야 하는지** 알려 준다.

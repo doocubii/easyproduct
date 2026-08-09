@@ -41,6 +41,7 @@
 | `plan` | (없음) | – | – | prose |
 | `design-doc` | (없음) | – | – | prose |
 | `user-stories` | (없음) | – | – | prose |
+| `use-cases` | (없음) | – | – | prose |
 | `ia` | `ia.features` | ia.v1 | `FEAT.<domain>.<name>` | prose |
 | `data-model` | `datamodel.group` | data-model.v1 | `DATA.<group>` | table |
 | `design-concept` | `design.tokens` | design.v1 | `token`(color.*/spacing.*/…) | prose |

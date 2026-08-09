@@ -289,5 +289,36 @@ expect_no_out "상태코드 없이도 큐·gRPC 계약이 통과한다" "success
 expect_no_out "오류에 status 없이 code·when만으로 통과한다" "errors[0].status 누락"
 
 echo
+echo "[8] 실제 세트에서 드러난 두 구멍 — 조용히 빠지는 문서를 드러낸다"
+# 실제 프로젝트(문서 65개)에 돌려보니 ⓐ 26건이 매니페스트에 없어 **점검 대상 밖**이었고
+# ⓑ 20건이 파장 지도에 없는 종류라 **파장 대상 밖**이었다. 둘 다 "통과"로 읽히던 조용한 누락이다.
+mkdir -p "$SET/supporting"
+cat > "$SET/supporting/notes.md" <<'MD'
+---
+doc_type: project-notes
+version: 1
+revision: 1
+ssot: prose
+---
+# 프로젝트 고유 메모 (세트 표준 밖)
+MD
+run >/dev/null
+expect_out "매니페스트에 없는 문서를 센다" "매니페스트에 없는 문서"
+expect_out "점검 대상에서 빠졌음을 말한다" "점검 대상에서 빠졌다"
+# 매니페스트에 넣으면 발견되지만, 파장 지도에 없는 종류라 이번엔 '파장 대상 밖'으로 뜬다
+python3 - "$SET/00-index.md" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p,encoding='utf-8').read()
+s=s.replace('{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" }',
+            '{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" },\n'
+            '  { "docType": "project-notes", "path": "supporting/notes.md", "role": "supporting" }')
+open(p,'w',encoding='utf-8').write(s)
+PY
+run >/dev/null
+expect_no_out "매니페스트에 넣으면 누락 보고가 사라진다" "매니페스트에 없는 문서"
+expect_out "파장 지도에 없는 종류를 센다" "파장 지도에 없는 문서 종류"
+expect_out "탈출구(derivesFrom)를 알려준다" "derivesFrom"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
