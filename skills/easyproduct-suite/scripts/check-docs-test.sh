@@ -374,5 +374,32 @@ expect_out "화면 개정 후 요청서가 낡았음을 잡는다" "가 낡았�
 expect_out "다시 생성하라고 알려준다" "다시 생성"
 
 echo
+echo "[11] 중복 동작 id — 참조가 갈리는 것을 막는다"
+# io id는 사람/LLM이 동작 이름에서 지어내는 값이라 실제로 충돌한다(도그푸드에서 한글 동작명을 기계적으로
+# 옮기다 `IO.auth.login.action`이 둘 생겼다). 중복이면 요청서·백엔드 basis가 조용히 엉뚱한 동작에 붙는다.
+mkdir -p "$WORK/dup/screens" "$WORK/dup/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/dup/schemas/"
+cat > "$WORK/dup/screens/s.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: ../schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.action", "action": "개인 가입", "target": "client", "sends": [], "receives": [] },
+    { "id": "IO.auth.login.action", "action": "비밀번호 찾기", "target": "client", "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/dup" > "$WORK/out.txt" 2>&1
+expect_out "중복 동작 id를 잡는다" "중복 동작 id"
+expect_out "어느 동작끼리 겹쳤는지 보여준다" "비밀번호 찾기"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

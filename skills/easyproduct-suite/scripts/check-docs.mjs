@@ -403,7 +403,24 @@ for (const doc of loaded) {
     }
   }
 }
-const ioById = new Map(screenIo.filter((x) => x.id).map((x) => [x.id, x]));
+// 같은 io id가 둘이면 그 참조가 어느 동작을 가리키는지 갈린다 — 요청서·백엔드 basis가 조용히 엉뚱한
+// 동작에 붙는다. id는 사람/LLM이 동작 이름에서 지어내는 값이라 실제로 충돌하기 쉽다(도그푸드에서 발생).
+const ioById = new Map();
+{
+  const dupSeen = new Set();
+  for (const x of screenIo) {
+    if (!x.id) continue;
+    if (ioById.has(x.id)) {
+      if (!dupSeen.has(x.id)) {
+        const prev = ioById.get(x.id);
+        report(`  ❌ 중복 동작 id: ${x.id} 가 "${prev.action}"(${prev.doc})와 "${x.action}"(${x.doc}) 양쪽에 있음`);
+        dead++; dupSeen.add(x.id);
+      }
+      continue;
+    }
+    ioById.set(x.id, x);
+  }
+}
 // 인터페이스 요청서: 가리키는 동작·데이터·정책이 실재하나 + 출처가 그 뒤 바뀌지 않았나.
 // 요청서는 파생물이라 낡는 게 정상이고, 낡았으면 **다시 생성**하면 된다 — 그래서 경고다.
 for (const doc of loaded) {
