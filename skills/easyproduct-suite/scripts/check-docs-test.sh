@@ -186,5 +186,15 @@ expect_out "개정 번호 없이 수정됨을 잡는다" "개정 번호 없이 �
 expect_no_out "그 경우엔 '개정됨' 메시지가 아니다" "개정됨(r2→"
 
 echo
+echo "[5] 기준선에 revision이 없을 때 — '개정 번호 없이 수정됨'으로 오인하지 않는다"
+# 도그푸드에서 실제로 나온 오보다: revision을 올렸는데도 "개정 번호 없이 수정됨"이라고 했다.
+# 원인은 기준선 스냅샷에 revision이 없어 비교가 불가능했던 것인데, 메시지가 **엉뚱한 조치**를 지시했다.
+sed -i 's/"revision": [0-9]*, //g' "$SET/reference/reviews/review-2026-08-01.md"
+run >/dev/null
+expect_out "기준선에 개정 번호가 없음을 밝힌다" "기준선에 개정 번호 없음"
+expect_out "그래도 하류를 지목한다" "하류 재검토 필요"
+expect_no_out "'개정 번호 없이 수정됨'으로 오인하지 않는다" "개정 번호 없이 수정됨"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

@@ -401,14 +401,21 @@ report('\n[3] 파장 · 신선도');
         const c = cur.get(up); if (!c) continue;
         const b = baseline.get(up);
         if (!b) { unpinned++; continue; }
-        const revChanged = b.revision != null && c.revision != null && b.revision !== c.revision;
         const hashChanged = b.contentHash && b.contentHash !== c.hash;
-        if (revChanged) {
+        // 세 경우를 구분한다. 뭉뚱그리면 **엉뚱한 조치를 지시**하게 된다 —
+        // 실제로 도그푸드에서 revision을 올렸는데도 "개정 번호 없이 수정됨"이라고 잘못 보고했다
+        // (기준선 스냅샷에 revision이 없어서 비교가 불가능했던 것뿐인데).
+        if (b.revision != null && c.revision != null && b.revision !== c.revision) {
           stale++;
           report(`  ⚠ ${up} 개정됨(r${b.revision}→r${c.revision}) — 하류 재검토 필요: ${[...downs].join(', ')}`);
+        } else if (b.revision == null && hashChanged) {
+          stale++;
+          const now = c.revision == null ? '현재도 개정 번호 없음' : `현재 r${c.revision}`;
+          report(`  ⚠ ${up} 이 리뷰 이후 바뀜(기준선에 개정 번호 없음 · ${now}) — 하류 재검토 필요: ${[...downs].join(', ')}`);
+          if (c.revision == null) report('     (문서에 revision을 넣으면 "결정 변경"과 "문구 수정"을 구분할 수 있다)');
         } else if (hashChanged) {
           silent++;
-          report(`  ⚠ ${up} 이 개정 번호 없이 수정됨 — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+          report(`  ⚠ ${up} 이 개정 번호 없이 수정됨(r${c.revision} 그대로) — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
         }
       }
       if (unpinned) report(`  · 리뷰 기준선에 없는 상류 ${unpinned}개(그 문서들은 신선도 판정 불가 — 다음 리뷰에서 sources에 넣으세요)`);
