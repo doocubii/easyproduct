@@ -215,6 +215,23 @@ for n in backend-interface.v1 screen-design.v1; do
   src="$(find "$HERE/../.." -name "$n.schema.json" -path '*/schemas/*' | head -1)"
   [ -n "$src" ] && cp "$src" "$SET/schemas/"
 done
+cat > "$SET/ssot/policy.md" <<'MD'
+---
+doc_type: policy
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: policy.rules
+  schema: ../schemas/policy.v1.schema.json
+---
+# 정책서
+```json policy.rules
+{ "rules": [ { "id": "POL.member.phoneOnly", "label": "휴대폰 번호 로그인", "domain": "member" } ] }
+```
+MD
+src="$(find "$HERE/../.." -name "policy.v1.schema.json" -path '*/schemas/*' | head -1)"; [ -n "$src" ] && cp "$src" "$SET/schemas/"
 cat > "$SET/screens/user/screen-design-user-order.md" <<'MD'
 ---
 doc_type: screen-design
@@ -232,8 +249,9 @@ machine:
   { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
     "data": { "display": [], "bindings": [],
       "io": [
-        { "id": "FEAT.auth.login.submit", "action": "로그인", "target": "server", "sends": [], "receives": [] },
-        { "id": "FEAT.auth.login.saveDraft", "action": "임시저장", "target": "local", "sends": [], "receives": [] },
+        { "id": "IO.auth.login.submit", "action": "로그인", "target": "server", "sends": [], "receives": [],
+          "policies": ["POL.member.phoneOnly"], "semantics": "자격 오류 시 어느 쪽이 틀렸는지 구분하지 않는다" },
+        { "id": "IO.auth.login.saveDraft", "action": "임시저장", "target": "local", "sends": [], "receives": [] },
         { "action": "미분류", "sends": [], "receives": [] },
         { "action": "옛 참조", "op": "API.auth.login", "sends": [], "receives": [] }
       ] } } ] }
@@ -257,7 +275,7 @@ machine:
     { "id": "BEITF.user.auth.login", "summary": "로그인", "transport": "grpc",
       "binding": { "service": "AuthService", "rpc": "Login" },
       "auth": { "mode": "public", "desc": "공개" }, "request": { "fields": [] }, "response": { "fields": [] },
-      "basis": [ { "kind": "screen-io", "ref": "FEAT.auth.login.submit" } ] },
+      "basis": [ { "kind": "screen-io", "ref": "IO.auth.login.submit" } ] },
     { "id": "BEITF.user.auth.purge", "summary": "보존기간 경과 파기", "transport": "queue",
       "binding": { "topic": "auth.purge" },
       "auth": { "mode": "public", "desc": "공개" }, "request": { "fields": [] },
@@ -273,7 +291,8 @@ p=sys.argv[1]; s=open(p,encoding='utf-8').read()
 s=s.replace('{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" }',
             '{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" },\n'
             '  { "docType": "screen-design", "path": "screens/user/screen-design-user-order.md", "role": "ssot" },\n'
-            '  { "docType": "backend-interface", "path": "ssot/backend/backend-interface.md", "role": "ssot" }')
+            '  { "docType": "backend-interface", "path": "ssot/backend/backend-interface.md", "role": "ssot" },\n'
+            '  { "docType": "policy", "path": "ssot/policy.md", "role": "ssot" }')
 open(p,'w',encoding='utf-8').write(s)
 PY
 run >/dev/null
@@ -282,7 +301,7 @@ expect_no_out "server 요구가 덮였으면 미덮임 보고 없음" "덮이지
 expect_out "target 미분류를 업그레이드 필요로 집계" "미분류 동작 2건"
 expect_out "폐기된 op를 이관 필요로 집계" "이관 필요"
 expect_out "등기부 없는 갈래(ops)에 why가 없으면 잡는다" "why 없음"
-expect_no_out "local 동작을 서버 요구로 세지 않는다" "FEAT.auth.login.saveDraft"
+expect_no_out "local 동작을 서버 요구로 세지 않는다" "IO.auth.login.saveDraft"
 # 상태코드는 전송별 규격이다 — 큐·gRPC엔 없다. 도그푸드에서 response.successStatus가 필수로 남아 있어
 # 큐 인터페이스가 스키마 위반이 났다(REST 전제의 잔재).
 expect_no_out "상태코드 없이도 큐·gRPC 계약이 통과한다" "successStatus 누락"
@@ -327,11 +346,11 @@ if python3 -c "
 import json,sys
 d=json.load(open('$WORK/needs.json'))
 n=d['needs']
-assert any(x['id']=='FEAT.auth.login.submit' for x in n), 'server 요구가 추출되지 않음'
-assert not any(x['id']=='FEAT.auth.login.saveDraft' for x in n), 'local 동작이 섞여 들어옴'
+assert any(x['id']=='IO.auth.login.submit' for x in n), 'server 요구가 추출되지 않음'
+assert not any(x['id']=='IO.auth.login.saveDraft' for x in n), 'local 동작이 섞여 들어옴'
 assert any(x['coveredBy'] for x in n), '덮은 인터페이스가 함께 오지 않음'
 assert d['untargeted']>0, 'target 미분류 건수가 보고되지 않음'
-assert '의미 요건' in d['limits'], '한계가 함께 나오지 않음'
+assert any(x['policies'] and x['semantics'] for x in n), '정책·의미 요건이 실려 나오지 않음'
 "; then ok "server 요구만 추출 · 덮은 인터페이스·미분류·한계 동반"; else bad "--emit-needs 출력이 계약과 다름"; fi
 if python3 -c "import json;json.load(open('$WORK/needs.json'))" 2>/dev/null; then ok "stdout이 순수 JSON(리포트는 stderr)"; else bad "stdout에 리포트가 섞임"; fi
 

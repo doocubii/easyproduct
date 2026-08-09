@@ -76,7 +76,7 @@
 | `BESTORE.<이름>` | 저장소 | `backend.stores`의 `stores[].id` |
 | `BESCHEMA.<테이블>` | 논리 테이블 | `backend.tables`의 `tables[].id` |
 | `BEARCH.mod.*` / `BEARCH.ext.*` | 시스템 조각 / 외부 연동 | `backend.system`의 `modules[].id` / `integrations[].id` |
-| `FEAT.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
+| `IO.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
 
 > **데이터 필드만 접두사가 없다**(`user.email`처럼). 규칙: `<X>.<Y>` 꼴이고 `X`가 `datamodel.group`의 어떤 그룹 로컬 이름과 같으면 데이터 필드로 해석한다. (그룹 anchor는 `DATA.` 접두사가 붙지만 필드는 안 붙인다 — 사람용 표 가독성 유지 결정.)
 
@@ -100,7 +100,7 @@
 화면의 **동작**(`data.io[]`)은 "이 동작이 무엇을 주고받나"이고, **상대는 `target`이 정한다** —
 `server`(서버 통신) · `local`(기기 저장) · `client`(화면 안 상태). **io는 서버 통신 전용이 아니다.**
 
-- **백엔드 인터페이스 계약이 요구를 가리킨다**(`interfaces[].basis[]` → 화면 io·요청서·정책·운영 요구).
+- **백엔드 인터페이스 계약이 요구를 가리킨다**(`interfaces[].basis[]` → 화면 io(`IO.*`)·요청서·정책·운영 요구).
   **반대 방향(화면 → 계약)은 두지 않는다** — 같은 관계를 양쪽에 적으면 이중 기입이라 조용히 어긋난다
   (`data.io[].op`는 그래서 폐기됐다).
 - 점검자는 **양방향으로** 본다:

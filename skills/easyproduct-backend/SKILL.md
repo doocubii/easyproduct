@@ -307,7 +307,7 @@ ssot/backend/
 
 | 갈래 | 어디서 | `ref`에 적는 것 |
 |---|---|---|
-| `screen-io` | 화면 설계서 `data.io[]` 중 **`target`의 첫 마디가 `server`인 것만** | io의 `id`(없으면 `FEAT.<화면>#<동작이름>`) |
+| `screen-io` | 화면 설계서 `data.io[]` 중 **`target`의 첫 마디가 `server`인 것만** | io의 `id`(`IO.*`, 없으면 `FEAT.<화면>#<동작이름>`) |
 
 **`screen-io` 갈래는 기계로 전수 추출한다 — 눈으로 훑지 않는다.**
 

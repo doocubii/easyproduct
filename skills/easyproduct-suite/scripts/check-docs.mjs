@@ -334,7 +334,8 @@ for (const doc of loaded) {
       const dat = Array.isArray(s.data) ? {} : (s.data || {});
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
-                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [], op: a.op || null, doc: doc.path });
+                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [],
+                        policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
     }
   }
@@ -364,6 +365,10 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) if (a.ui) uiRefs.push(a.ui);
       for (const b of (dat.bindings || [])) if (b.ui) uiRefs.push(b.ui);
       for (const c of uiRefs) { if (/^UI\.FEAT\./.test(c)) continue; refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; } }
+      // 동작에 걸린 정책(POL.*) — 산문에 있는 것을 블록이 담았으면 실재 확인까지 받는다.
+      for (const a of (dat.io || [])) for (const pol of (a.policies || [])) {
+        refChecked++; if (!reg.pol.has(pol)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 동작 "${a.action}" 의 정책 ${pol} → policy.rules에 없음`); dead++; }
+      }
       const dataRefs = [...(dat.display || [])];
       for (const a of (dat.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
       for (const b of (dat.bindings || [])) for (const v of (b.vars || (b.var ? [b.var] : []))) dataRefs.push(v);
@@ -436,13 +441,14 @@ if (emitNeeds) {
     .map((x) => ({
       id: x.id, screen: x.screen, action: x.action, target: x.target,
       ui: x.ui ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
+      policies: x.policies ?? [], semantics: x.semantics ?? null,
       doc: x.doc, coveredBy: covered.get(x.id) ?? [],
     }));
   const untargeted = screenIo.filter((x) => !x.target).length;
   console.log(JSON.stringify({
     needs,
     note: '화면 동작에서 기계 추출한 서버 요구 목록(읽기 전용 파생물 — 파일로 저장하지 말 것).',
-    limits: '의미 요건·동작 단위 정책 링크는 산문에만 있어 담기지 않는다.',
+    limits: '`policies`·`semantics`가 비어 있으면 화면 산문에 있는 것을 블록이 안 담은 것일 수 있다(손실 미러) — 그 경우 백엔드가 오류 근거·멱등·정렬을 정할 근거가 없다.',
     untargeted,
   }, null, 2));
   process.exit(0);

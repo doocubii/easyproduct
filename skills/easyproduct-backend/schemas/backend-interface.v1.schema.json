@@ -347,7 +347,7 @@
                 },
                 "ref": {
                   "type": "string",
-                  "description": "그 근거를 가리키는 값. screen-io=`FEAT.<화면>.<동작>`(io의 id, 없으면 `FEAT.<화면>#<동작이름>`) · api-request=그 문서의 요청 id · policy=`POL.*` · ops/legacy=사람이 읽을 이름."
+                  "description": "그 근거를 가리키는 값. screen-io=`IO.<도메인>.<화면>.<동작>`(io의 id, 없으면 `FEAT.<화면>#<동작이름>`) · api-request=그 문서의 요청 id · policy=`POL.*` · ops/legacy=사람이 읽을 이름."
                 },
                 "why": {
                   "type": "string",
