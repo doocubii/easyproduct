@@ -53,6 +53,7 @@
 | `scenario` | `scenario.trace` | scenario.v1 | `SCN.<domain>.<name>` | prose |
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
 | `review` | `review.snapshot` | review.v1 | (없음 — 점검 흔적) | prose |
+| `interface-request` | `interface.requests` | interface-request.v1 | (없음 — `IO.*`를 참조만) | prose |
 | `backend-architecture` | `backend.system` | backend-architecture.v1 | `BEARCH.mod.*`·`BEARCH.ext.*` | prose |
 | `backend-storage` | `backend.stores` | backend-storage.v1 | `BESTORE.<이름>` | prose |
 | `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |
@@ -100,6 +101,9 @@
 화면의 **동작**(`data.io[]`)은 "이 동작이 무엇을 주고받나"이고, **상대는 `target`이 정한다** —
 `server`(서버 통신) · `local`(기기 저장) · `client`(화면 안 상태). **io는 서버 통신 전용이 아니다.**
 
+- **요구는 프론트가 파일로 넘긴다.** 화면 동작에서 **기계로 생성**한 `interface-request` 문서가 인계 산출물이고,
+  백엔드는 화면 설계서를 뒤지지 않고 **이 문서를 읽는다**(층 분리). SSOT가 아니라 **재생성 가능한 파생물**이라
+  손으로 고치지 않으며, `from[]`의 출처 스냅샷으로 낡음이 잡힌다. 전송은 `preferredTransport`로 **희망만** 싣는다.
 - **백엔드 인터페이스 계약이 요구를 가리킨다**(`interfaces[].basis[]` → 화면 io(`IO.*`)·요청서·정책·운영 요구).
   **반대 방향(화면 → 계약)은 두지 않는다** — 같은 관계를 양쪽에 적으면 이중 기입이라 조용히 어긋난다
   (`data.io[].op`는 그래서 폐기됐다).

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "interface-request.v1",
+  "title": "인터페이스 요청서 (interface.requests)",
+  "description": "프론트가 백엔드에 넘기는 **요구 인계 산출물**. 화면 설계서의 동작(`data.io` 중 `target`의 첫 마디가 `server`인 것)에서 **기계로 생성**한다(`check-docs.mjs --emit-interface-request`). 이 문서는 **SSOT가 아니라 파생물**이다 — 원본은 화면 설계서이고, 어긋나면 화면이 이긴다. 손으로 고치지 말고 다시 생성한다. 존재 이유는 **층 분리**다: 백엔드가 프론트의 화면 설계서를 뒤지지 않고 이 문서만 읽는다.",
+  "type": "object",
+  "required": ["generatedAt", "from", "requests"],
+  "additionalProperties": false,
+  "properties": {
+    "generatedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "생성 날짜(YYYY-MM-DD). 이 문서가 언제 뽑힌 것인지 — 낡았는지 판단하는 사람용 표시."
+    },
+    "scope": {
+      "type": "string",
+      "description": "이 요청서가 담는 범위(예: user · backoffice). 화면 설계서가 범위별로 갈리므로 요청서도 갈린다."
+    },
+    "preferredTransport": {
+      "enum": ["rest", "grpc", "graphql", "ws", "queue", "other"],
+      "description": "프론트가 **희망하는** 전송 방식. **확정이 아니다** — 전송 결정은 저장소·부하·내부 호출까지 보는 백엔드 몫이다(백엔드가 다르게 정하면 계약의 `notes`에 사유를 남긴다). 조직 표준이나 기존 게이트웨이 때문에 사실상 정해져 있는 경우가 많아, 그 현실을 싣되 결정권은 넘기지 않는다."
+    },
+    "bindingSlots": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "`preferredTransport`가 있을 때, 그 전송이면 백엔드가 **채워야 할 규격 자리**(값이 아니라 자리다). rest → method·path·status · grpc → service·rpc · graphql → operationType·fieldName · ws → channel·event · queue → topic·key. **요청서는 경로·메서드를 지어내지 않는다** — 그건 계약이지 요구가 아니다."
+    },
+    "from": {
+      "type": "array",
+      "minItems": 1,
+      "description": "이 요청서를 뽑아낸 **출처 문서와 그때의 상태 스냅샷**. 비면 무엇에서 나왔는지 알 수 없어 낡음을 판정할 수 없다. 이 스냅샷이 있어야 점검기가 '화면은 개정됐는데 요청서는 그대로'를 잡는다.",
+      "items": {
+        "type": "object",
+        "required": ["path", "contentHash"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "description": "출처 화면 설계서의 세트 루트 기준 경로." },
+          "revision": { "type": "integer", "description": "그때의 frontmatter `revision`. 문서에 없으면 생략." },
+          "contentHash": { "type": "string", "description": "그때의 파일 내용 해시(`sha256:...`)." }
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "description": "넘기는 요구 목록. 화면 동작 하나 = 요구 하나. 비면 넘길 것이 없다는 뜻이라 문서 자체가 무의미하다.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "screen", "action", "sends", "receives"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "그 동작의 anchor(`IO.<도메인>.<화면>.<동작>`). 화면 설계서의 `data.io[].id`에 실재해야 한다(죽은 링크 점검 대상). id가 없는 옛 화면 문서에서 뽑았으면 `FEAT.<화면>#<동작이름>` 합성 참조가 들어오며, 그 경우 대조가 불가능하다."
+          },
+          "screen": { "type": "string", "description": "그 동작이 사는 화면 ID(`FEAT.*`)." },
+          "action": { "type": "string", "description": "동작 이름(사람이 읽는 말). 백엔드가 인터페이스 `summary`를 지을 때 쓴다." },
+          "target": { "type": "string", "description": "그 동작의 상대(`server` 또는 `server.<한정자>`). 한정자가 있으면 어느 시스템 소관인지의 힌트다." },
+          "ui": { "type": "string", "description": "그 동작을 트리거하는 컴포넌트 ID(`UI.*`). 선택." },
+          "sends": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "보내는 데이터 변수(`<group>[.<field>]`) — 데이터 모델 실재 변수. 없으면 []."
+          },
+          "receives": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "받는 데이터 변수 — 데이터 모델 실재 변수. 없으면 []."
+          },
+          "policies": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "이 동작에 걸리는 제품 규칙(`POL.*`). 백엔드가 오류의 `policy`를 채우는 근거."
+          },
+          "semantics": {
+            "type": "string",
+            "description": "`sends`/`receives`만으로는 안 나오는 행동 규약(멱등·오류 구분·정렬·동기 여부). 백엔드 계약의 `idempotency`·`errors[].when`·`async`를 채우는 근거다. 비어 있으면 화면 산문에 없거나, 있는데 블록이 안 담은 것(손실 미러)이다."
+          }
+        }
+      }
+    }
+  }
+}

@@ -183,18 +183,24 @@ function discover(root) {
 const args = process.argv.slice(2);
 const printSnapshot = args.includes('--print-snapshot');
 const emitNeeds = args.includes('--emit-needs');
+const emitReq = args.includes('--emit-interface-request');
+const argVal = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : dflt; };
+const reqTransport = argVal('--transport');
+const reqScope = argVal('--scope');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
   console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
   console.error('  --emit-needs     : 화면 동작에서 **서버 요구 목록**을 기계 판독 JSON으로 추출(백엔드 설계의 입력)');
+  console.error('  --emit-interface-request [--transport rest|grpc|graphql|ws|queue] [--scope user]');
+  console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
   process.exit(2);
 }
 
 const problems = [];
 // --emit-needs 는 stdout이 **기계 판독 JSON 전용**이어야 하므로 사람용 리포트를 stderr로 보낸다
 // (파이프로 받아 쓰는 쪽이 파싱에 실패하지 않게).
-const report = (m) => (emitNeeds ? console.error(m) : console.log(m));
+const report = (m) => (emitNeeds || emitReq ? console.error(m) : console.log(m));
 const { via, docs } = discover(root);
 report(`문서 발견: ${docs.length}개 (${via === 'manifest' ? '매니페스트' : '폴더 스캔'})`);
 
@@ -341,6 +347,17 @@ for (const doc of loaded) {
   }
 }
 
+// 문서별 현재 상태(개정 번호·내용 해시) — 신선도 판정과 요청서의 출처 스냅샷이 함께 쓴다.
+const cur = new Map();   // path → {revision, hash}
+for (const d of allDocs) {
+  try {
+    const text = fs.readFileSync(path.resolve(root, d.path), 'utf8');
+    const fm = parseFrontmatter(text) || {};
+    const rev = fm.revision == null ? null : Number(fm.revision);
+    cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
+  } catch { /* 위에서 이미 보고됨 */ }
+}
+
 // 데이터 참조 해석: <group> 또는 <group>.<field>
 function dataRefOk(ref) {
   const bare = ref.replace(/^DATA\./, '');
@@ -386,6 +403,34 @@ for (const doc of loaded) {
     }
   }
 }
+const ioById = new Map(screenIo.filter((x) => x.id).map((x) => [x.id, x]));
+// 인터페이스 요청서: 가리키는 동작·데이터·정책이 실재하나 + 출처가 그 뒤 바뀌지 않았나.
+// 요청서는 파생물이라 낡는 게 정상이고, 낡았으면 **다시 생성**하면 된다 — 그래서 경고다.
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError || !Array.isArray(o.requests)) continue;
+    for (const r of o.requests) {
+      if (r.ref && !r.ref.includes('#')) {
+        refChecked++; if (!ioById.has(r.ref)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+      }
+      for (const v of [...(r.sends || []), ...(r.receives || [])]) {
+        refChecked++; if (!dataRefOk(v)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} 의 데이터 ${v} → 데이터 모델에 없음`); dead++; }
+      }
+      for (const pol of (r.policies || [])) {
+        refChecked++; if (!reg.pol.has(pol)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} 의 정책 ${pol} → policy.rules에 없음`); dead++; }
+      }
+    }
+    for (const f of (o.from || [])) {
+      const c = cur.get(f.path);
+      if (!c) { report(`  ❌ ${doc.path}: 출처 ${f.path} 가 세트에 없음`); dead++; continue; }
+      const revChanged = f.revision != null && c.revision != null && f.revision !== c.revision;
+      if (revChanged || (f.contentHash && f.contentHash !== c.hash)) {
+        report(`  ⚠ ${doc.path} 가 낡았다 — 출처 ${f.path} 가 생성 이후 바뀜(요청서를 다시 생성하세요: --emit-interface-request)`);
+      }
+    }
+  }
+}
+
 // 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
 for (const doc of loaded) {
   for (const o of doc.blocks) {
@@ -404,7 +449,6 @@ for (const doc of loaded) {
   }
 }
 // 근거(basis) — 등기부가 있는 갈래는 실재 확인, 없는 갈래는 사유(why) 필수.
-const ioById = new Map(screenIo.filter((x) => x.id).map((x) => [x.id, x]));
 for (const b of beBasis) {
   if (b.kind === 'screen-io') {
     if (!b.ref || b.ref.includes('#')) continue;              // 합성 참조(id 없는 옛 문서)는 대조 불가 — 아래에서 집계
@@ -451,6 +495,54 @@ if (emitNeeds) {
     limits: '`policies`·`semantics`가 비어 있으면 화면 산문에 있는 것을 블록이 안 담은 것일 수 있다(손실 미러) — 그 경우 백엔드가 오류 근거·멱등·정렬을 정할 근거가 없다.',
     untargeted,
   }, null, 2));
+  process.exit(0);
+}
+
+// ── 인터페이스 요청서 생성 (--emit-interface-request) ──
+// **층 분리를 위한 산출물이다.** 백엔드가 프론트의 화면 설계서를 뒤지는 대신, 프론트가 "우리가 필요한 건
+// 이것"을 파일로 넘긴다. 내용은 화면 동작에서 기계로 뽑으므로 사람이 옮겨 적지 않는다.
+// 이 문서는 SSOT가 아니라 **재생성 가능한 파생물**이고, 출처 스냅샷(`from`)이 있어 낡으면 점검기가 잡는다.
+if (emitReq) {
+  const SLOTS = {
+    rest: ['method', 'path', 'status'], grpc: ['service', 'rpc', 'requestMessage', 'responseMessage'],
+    graphql: ['operationType', 'fieldName'], ws: ['channel', 'event'], queue: ['topic', 'key', 'deliveryGuarantee'],
+  };
+  const picked = screenIo.filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server'
+    && (!reqScope || x.doc.includes(`/${reqScope}/`) || x.doc.includes(`-${reqScope}-`)));
+  const fromDocs = [...new Set(picked.map((x) => x.doc))].sort().map((p) => {
+    const c = cur.get(p) || {};
+    return c.revision == null ? { path: p, contentHash: c.hash } : { path: p, revision: c.revision, contentHash: c.hash };
+  });
+  const block = {
+    generatedAt: new Date().toISOString().slice(0, 10),
+    ...(reqScope ? { scope: reqScope } : {}),
+    ...(reqTransport ? { preferredTransport: reqTransport, bindingSlots: SLOTS[reqTransport] || [] } : {}),
+    from: fromDocs,
+    requests: picked.map((x) => ({
+      ref: x.id || `${x.screen}#${x.action}`, screen: x.screen, action: x.action,
+      ...(x.target ? { target: x.target } : {}), ...(x.ui ? { ui: x.ui } : {}),
+      sends: x.sends || [], receives: x.receives || [],
+      ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
+      ...(x.semantics ? { semantics: x.semantics } : {}),
+    })),
+  };
+  const rel = (p) => p.split('/').map(() => '..').slice(1).join('/') || '.';
+  const out = [
+    '---', 'doc_type: interface-request', 'version: 1', 'ssot: prose', 'machine:', '  lang: json',
+    '  tag: interface.requests', '  item: request-list', '  schema: schemas/interface-request.v1.schema.json',
+    '---', '',
+    `# 인터페이스 요청서${reqScope ? ` — ${reqScope}` : ''} (${block.generatedAt} 생성)`, '',
+    '> **프론트가 백엔드에 넘기는 요구 목록입니다.** 화면 설계서의 동작에서 **기계로 생성**했으니 손으로 고치지 마세요 —',
+    '> 화면을 고치고 다시 생성하면 됩니다. 이 문서는 SSOT가 아니라 파생물이고, 화면과 어긋나면 **화면이 이깁니다.**',
+    reqTransport
+      ? `> 전송은 \`${reqTransport}\`를 **희망**합니다(확정 아님 — 백엔드가 정하고, 다르면 사유를 남깁니다). 백엔드가 채울 자리: ${(SLOTS[reqTransport] || []).join(' · ')}`
+      : '> 전송 방식은 백엔드가 정합니다.',
+    '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
+    '| 동작 | 화면 | 보냄 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|',
+    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
+    '', '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
+  ].join('\n');
+  console.log(out);
   process.exit(0);
 }
 
@@ -534,16 +626,6 @@ report('\n[3] 파장 · 신선도');
     const baseline = new Map();
     if (latest) for (const s of (latest.snap.sources || [])) baseline.set(s.path, s);
 
-    const cur = new Map();   // path → {revision, hash}
-    for (const d of allDocs) {
-      const abs = path.resolve(root, d.path);
-      try {
-        const text = fs.readFileSync(abs, 'utf8');
-        const fm = parseFrontmatter(text) || {};
-        const rev = fm.revision == null ? null : Number(fm.revision);
-        cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
-      } catch { /* 위에서 이미 보고됨 */ }
-    }
 
     if (printSnapshot) {
       // 리뷰 산출물을 쓸 때 붙일 sources 스냅샷을 그대로 출력한다(사람이 해시를 손으로 만들지 않게).

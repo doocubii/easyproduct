@@ -484,6 +484,25 @@ temp/mockups/{scope}/
 - `schemas/ui-components.v1.schema.json` — 인벤토리 `uicomponents.list` 블록의 JSON Schema 계약(스킬 소유 고정 자산, `ssot/schemas/`로 복사).
 
 
+## 인터페이스 요청서 내주기 (백엔드에 넘길 때)
+
+백엔드는 **화면 설계서를 직접 뒤지지 않는다.** 프론트가 "우리가 필요한 건 이것"을 파일로 넘긴다.
+그 파일은 손으로 쓰지 않고 **기계로 생성**한다:
+
+```bash
+node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
+  --emit-interface-request --transport rest --scope user > interface-request-user.md
+```
+
+- `--transport`는 **희망**을 싣는 것이다(확정 아님). 그 전송이면 백엔드가 채워야 할 규격 자리(`bindingSlots`)가
+  함께 나가고, **경로·메서드 값은 지어내지 않는다** — 그건 요구가 아니라 계약이다.
+- `--scope`로 범위를 가른다(사용자 앱 / 백오피스). 화면 설계서가 갈리므로 요청서도 갈린다.
+- 담기는 것: `target`이 서버인 동작의 `id`·화면·동작 이름·보냄/받음·`policies`·`semantics`, 그리고
+  **출처 스냅샷**(그 화면 문서의 `revision`+해시).
+- **손으로 고치지 않는다.** 화면을 고치고 다시 생성한다. 화면과 어긋나면 화면이 이긴다.
+  출처 스냅샷 덕분에 화면이 개정되면 점검기가 **"요청서가 낡았다"**를 잡는다.
+- 세트 색인에는 `role: handoff`로 넣는다(SSOT가 아니라 파생 인계물).
+
 ## 버전업(gap-fill) — 옛 화면 설계서에 io 세 가지 채우기
 
 옛 문서에는 `io[].id`·`target`이 없고 `op`가 채워져 있을 수 있다. **재진입/버전업 때 아래를 채운다**

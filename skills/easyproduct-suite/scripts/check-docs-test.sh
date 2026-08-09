@@ -355,5 +355,24 @@ assert any(x['policies'] and x['semantics'] for x in n), '정책·의미 요건�
 if python3 -c "import json;json.load(open('$WORK/needs.json'))" 2>/dev/null; then ok "stdout이 순수 JSON(리포트는 stderr)"; else bad "stdout에 리포트가 섞임"; fi
 
 echo
+echo "[10] 인터페이스 요청서 — 기계 생성 · 등록 · 낡음 판정"
+# 백엔드가 화면 설계서를 뒤지지 않도록 프론트가 넘기는 인계 산출물. SSOT가 아니라 파생물이라
+# 출처 스냅샷으로 낡음이 잡혀야 한다(파일로 굳히는 대가를 관리하는 유일한 장치다).
+src="$(find "$HERE/../.." -name "interface-request.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$src" ] && cp "$src" "$SET/schemas/"
+node "$CHECK" "$SET" --emit-interface-request --transport grpc > "$SET/interface-request.md" 2>/dev/null
+if grep -q "preferredTransport" "$SET/interface-request.md" && grep -q "IO.auth.login.submit" "$SET/interface-request.md"; then
+  ok "요청서를 기계로 생성(희망 전송·요구 포함)"; else bad "요청서 생성 실패"; fi
+if grep -q "requestMessage" "$SET/interface-request.md"; then ok "전송별 채울 자리(bindingSlots)를 낸다"; else bad "bindingSlots 없음"; fi
+if grep -q "saveDraft" "$SET/interface-request.md"; then bad "local 동작이 요청서에 섞임"; else ok "server 동작만 담는다"; fi
+sed -i 's|{ "docType": "policy", "path": "ssot/policy.md", "role": "ssot" }|{ "docType": "policy", "path": "ssot/policy.md", "role": "ssot" },\n  { "docType": "interface-request", "path": "interface-request.md", "role": "handoff" }|' "$SET/00-index.md"
+run >/dev/null
+expect_no_out "갓 생성한 요청서는 낡지 않았다" "가 낡았다"
+sed -i 's/^revision: 1$/revision: 2/' "$SET/screens/user/screen-design-user-order.md"
+run >/dev/null
+expect_out "화면 개정 후 요청서가 낡았음을 잡는다" "가 낡았다"
+expect_out "다시 생성하라고 알려준다" "다시 생성"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
