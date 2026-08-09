@@ -256,11 +256,12 @@ machine:
   "interfaces": [
     { "id": "BEITF.user.auth.login", "summary": "로그인", "transport": "grpc",
       "binding": { "service": "AuthService", "rpc": "Login" },
-      "auth": { "mode": "public" }, "request": { "fields": [] }, "response": { "fields": [] },
+      "auth": { "mode": "public", "desc": "공개" }, "request": { "fields": [] }, "response": { "fields": [] },
       "basis": [ { "kind": "screen-io", "ref": "FEAT.auth.login.submit" } ] },
     { "id": "BEITF.user.auth.purge", "summary": "보존기간 경과 파기", "transport": "queue",
       "binding": { "topic": "auth.purge" },
-      "auth": { "mode": "public" }, "request": { "fields": [] }, "response": { "fields": [] },
+      "auth": { "mode": "public", "desc": "공개" }, "request": { "fields": [] },
+      "response": { "fields": [], "errors": [ { "code": "PURGE_FAILED", "when": "대상 조회 실패" } ] },
       "basis": [ { "kind": "ops", "ref": "야간 파기 배치" } ] }
   ] }
 ```
@@ -282,6 +283,10 @@ expect_out "target 미분류를 업그레이드 필요로 집계" "미분류 동
 expect_out "폐기된 op를 이관 필요로 집계" "이관 필요"
 expect_out "등기부 없는 갈래(ops)에 why가 없으면 잡는다" "why 없음"
 expect_no_out "local 동작을 서버 요구로 세지 않는다" "FEAT.auth.login.saveDraft"
+# 상태코드는 전송별 규격이다 — 큐·gRPC엔 없다. 도그푸드에서 response.successStatus가 필수로 남아 있어
+# 큐 인터페이스가 스키마 위반이 났다(REST 전제의 잔재).
+expect_no_out "상태코드 없이도 큐·gRPC 계약이 통과한다" "successStatus 누락"
+expect_no_out "오류에 status 없이 code·when만으로 통과한다" "errors[0].status 누락"
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"

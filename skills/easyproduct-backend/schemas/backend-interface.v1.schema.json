@@ -176,15 +176,14 @@
           "response": {
             "type": "object",
             "required": [
-              "successStatus",
               "fields"
             ],
             "additionalProperties": true,
-            "description": "성공 응답의 확정 형태. 봉투(envelope)를 쓰면 fields 는 봉투 안 payload 기준으로 적고 envelope 에 봉투 이름을 적는다.",
+            "description": "성공 응답의 확정 형태. 봉투(envelope)를 쓰면 fields 는 봉투 안 payload 기준으로 적고 envelope 에 봉투 이름을 적는다. 상태코드는 전송별 규격이라 여기 두지 않는다(REST면 `binding.status`).",
             "properties": {
               "successStatus": {
                 "type": "number",
-                "description": "성공 상태코드(확정)."
+                "description": "**REST 전용** — 성공 시 상태코드. 전송별 규격이므로 새로 적을 때는 `binding.status`에 담는다(큐·gRPC·GraphQL엔 상태코드가 없다). 옛 문서 호환용으로 남아 있다."
               },
               "envelope": {
                 "type": "string",
@@ -237,7 +236,6 @@
                 "items": {
                   "type": "object",
                   "required": [
-                    "status",
                     "code",
                     "when"
                   ],
@@ -245,7 +243,7 @@
                   "properties": {
                     "status": {
                       "type": "number",
-                      "description": "HTTP 상태코드."
+                      "description": "**REST 전용** — 그 오류의 상태코드. 전송마다 오류를 나르는 방법이 다르므로(gRPC status code · GraphQL errors[] · 큐 DLQ) 전송별 표현은 횡단 규약에서 한 번 정하고, 여기엔 `code`·`when`을 반드시 적는다."
                     },
                     "code": {
                       "type": "string",

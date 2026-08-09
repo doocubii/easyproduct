@@ -330,7 +330,7 @@ ssot/backend/
 
 | transport | `binding`에 담을 것 |
 |---|---|
-| `rest` | `method` · `path` · `status` |
+| `rest` | `method` · `path` · `status`(성공 상태코드) |
 | `grpc` | `service` · `rpc` · `requestMessage` · `responseMessage` |
 | `graphql` | `operationType`(query/mutation/subscription) · `fieldName` |
 | `ws` | `channel` · `event` |
@@ -338,6 +338,10 @@ ssot/backend/
 
 **경로·method를 최상위에 적지 않는다**(그건 REST 전용이다). 비워 두면 "어떻게 부르는지"가 없는 계약이라
 최소 1개는 필수다.
+
+**상태코드도 전송별 규격이다.** 성공 상태코드는 `binding.status`에, 오류의 상태코드는 횡단 규약에 둔다 —
+`response.successStatus`·`errors[].status`는 **REST 전용이고 옛 문서 호환용**이라 새로 적지 않는다.
+오류 항목에는 전송과 무관한 **`code`·`when`(언제 나는지)을 반드시** 적는다.
 
 **6-3. 나머지 확정.**
 
