@@ -207,5 +207,82 @@ expect_out "업그레이드가 필요하다고 말한다" "업그레이드 필�
 expect_out "무엇을 하라고 알려준다" "gap-fill"
 
 echo
+echo "[7] 백엔드 — 요구·계약의 방향과 갈래"
+# io는 서버 통신 전용이 아니다(로컬 저장·화면 안 상태도 동작이다). target의 첫 마디로 갈래를 판정하고
+# server인 것만 요구로 수확해야, 로컬 저장에 서버 인터페이스를 지어내지 않는다.
+mkdir -p "$SET/ssot/backend"
+for n in backend-interface.v1 screen-design.v1; do
+  src="$(find "$HERE/../.." -name "$n.schema.json" -path '*/schemas/*' | head -1)"
+  [ -n "$src" ] && cp "$src" "$SET/schemas/"
+done
+cat > "$SET/screens/user/screen-design-user-order.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: ../../schemas/screen-design.v1.schema.json
+---
+# 주문 화면
+```json screendesign.screens
+{ "screens": [
+  { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+    "data": { "display": [], "bindings": [],
+      "io": [
+        { "id": "FEAT.auth.login.submit", "action": "로그인", "target": "server", "sends": [], "receives": [] },
+        { "id": "FEAT.auth.login.saveDraft", "action": "임시저장", "target": "local", "sends": [], "receives": [] },
+        { "action": "미분류", "sends": [], "receives": [] },
+        { "action": "옛 참조", "op": "API.auth.login", "sends": [], "receives": [] }
+      ] } } ] }
+```
+MD
+cat > "$SET/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: ../../schemas/backend-interface.v1.schema.json
+---
+# 인터페이스 계약
+```json backend.interfaces
+{ "domain": "auth", "scope": "user",
+  "interfaces": [
+    { "id": "BEITF.user.auth.login", "summary": "로그인", "transport": "grpc",
+      "binding": { "service": "AuthService", "rpc": "Login" },
+      "auth": { "mode": "public" }, "request": { "fields": [] }, "response": { "fields": [] },
+      "basis": [ { "kind": "screen-io", "ref": "FEAT.auth.login.submit" } ] },
+    { "id": "BEITF.user.auth.purge", "summary": "보존기간 경과 파기", "transport": "queue",
+      "binding": { "topic": "auth.purge" },
+      "auth": { "mode": "public" }, "request": { "fields": [] }, "response": { "fields": [] },
+      "basis": [ { "kind": "ops", "ref": "야간 파기 배치" } ] }
+  ] }
+```
+MD
+# 매니페스트에 등록해야 발견된다(세트 계약 그대로).
+python3 - "$SET/00-index.md" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p,encoding='utf-8').read()
+s=s.replace('{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" }',
+            '{ "docType": "terms-privacy", "path": "ssot/terms-privacy.md", "role": "ssot" },\n'
+            '  { "docType": "screen-design", "path": "screens/user/screen-design-user-order.md", "role": "ssot" },\n'
+            '  { "docType": "backend-interface", "path": "ssot/backend/backend-interface.md", "role": "ssot" }')
+open(p,'w',encoding='utf-8').write(s)
+PY
+run >/dev/null
+expect_out "REST가 아닌 전송(grpc·queue)도 계약이 통과한다" "죽은 링크"
+expect_no_out "server 요구가 덮였으면 미덮임 보고 없음" "덮이지 않은 요구"
+expect_out "target 미분류를 업그레이드 필요로 집계" "미분류 동작 2건"
+expect_out "폐기된 op를 이관 필요로 집계" "이관 필요"
+expect_out "등기부 없는 갈래(ops)에 why가 없으면 잡는다" "why 없음"
+expect_no_out "local 동작을 서버 요구로 세지 않는다" "FEAT.auth.login.saveDraft"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

@@ -52,6 +52,10 @@
 | `scenario` | `scenario.trace` | scenario.v1 | `SCN.<domain>.<name>` | prose |
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
 | `review` | `review.snapshot` | review.v1 | (없음 — 점검 흔적) | prose |
+| `backend-architecture` | `backend.system` | backend-architecture.v1 | `BEARCH.mod.*`·`BEARCH.ext.*` | prose |
+| `backend-storage` | `backend.stores` | backend-storage.v1 | `BESTORE.<이름>` | prose |
+| `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |
+| `backend-interface` | `backend.interfaces` | backend-interface.v1 | `BEITF.<범위>.<도메인>.<이름>` | prose |
 
 ## anchor·네임스페이스 레지스트리 (크로스도큐먼트 참조 라우팅)
 
@@ -67,6 +71,11 @@
 | `UI.*` | 컴포넌트 | `uicomponents.list`의 `components[].id`(+ 화면 파일의 로컬) |
 | `SCN.<domain>.<name>` | 시나리오 | `scenario.trace`의 `scenarios[].id` |
 | `color.*` `spacing.*` `radius.*` `type.*` | 디자인 토큰 | `design.tokens`의 `tokens.<category>.<name>` |
+| `BEITF.<범위>.<도메인>.<이름>` | 백엔드 인터페이스 | `backend.interfaces`의 `interfaces[].id` |
+| `BESTORE.<이름>` | 저장소 | `backend.stores`의 `stores[].id` |
+| `BESCHEMA.<테이블>` | 논리 테이블 | `backend.tables`의 `tables[].id` |
+| `BEARCH.mod.*` / `BEARCH.ext.*` | 시스템 조각 / 외부 연동 | `backend.system`의 `modules[].id` / `integrations[].id` |
+| `FEAT.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
 
 > **데이터 필드만 접두사가 없다**(`user.email`처럼). 규칙: `<X>.<Y>` 꼴이고 `X`가 `datamodel.group`의 어떤 그룹 로컬 이름과 같으면 데이터 필드로 해석한다. (그룹 anchor는 `DATA.` 접두사가 붙지만 필드는 안 붙인다 — 사람용 표 가독성 유지 결정.)
 
@@ -84,6 +93,21 @@
 4. **크로스도큐먼트 참조 무결성**: 위 레지스트리대로 접두사 라우팅 → 실재 확인. 끊긴 참조 보고.
 5. **drift(정합) 점검**: 사람용 표현과 기계 블록이 어긋나는지. `ssot`가 가리키는 원본 쪽을 진실로 보고 보고한다(자동 재생성은 스킬/LLM 몫, 점검자는 보고까지).
 6. **커버리지**(선택): 기획서의 핵심 행동·유스케이스가 시나리오에 닿는지 등 세트 규칙.
+
+## 요구와 계약 — 방향은 하나다 (백엔드가 붙을 때)
+
+화면의 **동작**(`data.io[]`)은 "이 동작이 무엇을 주고받나"이고, **상대는 `target`이 정한다** —
+`server`(서버 통신) · `local`(기기 저장) · `client`(화면 안 상태). **io는 서버 통신 전용이 아니다.**
+
+- **백엔드 인터페이스 계약이 요구를 가리킨다**(`interfaces[].basis[]` → 화면 io·요청서·정책·운영 요구).
+  **반대 방향(화면 → 계약)은 두지 않는다** — 같은 관계를 양쪽에 적으면 이중 기입이라 조용히 어긋난다
+  (`data.io[].op`는 그래서 폐기됐다).
+- 점검자는 **양방향으로** 본다:
+  - **요구 → 계약**: `target`의 첫 마디가 `server`인 io 중 어느 `basis`에도 안 담긴 것 → "덮이지 않은 요구"(경고).
+  - **계약 → 요구**: `basis`가 빈 인터페이스 금지. 등기부가 없는 갈래(`ops`·`legacy`)는 `why` 필수 —
+    없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
+- `target`의 **뒷마디(한정자)는 아직 등기부가 없다.** 점검자는 관측된 한정자를 **집계해 보고**해
+  표기가 갈린 것(`MAIN_SERVER` vs `main_server`)이 눈에 띄게 한다.
 
 ## 변경 전파와 신선도 (상위 결정이 바뀌었을 때)
 

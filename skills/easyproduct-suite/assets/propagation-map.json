@@ -3,25 +3,85 @@
   "$comment_source": "값의 출처는 references/skill-handoff-guide.md의 단계 간 인계 관계다(산문 → 기계 미러).",
   "$comment_use": "점검기가 docbundle.docs의 docType으로 실제 경로를 해석해 상류→하류 쌍을 계산한다. 프로젝트별 예외는 매니페스트 항목의 derivesFrom으로 덮어쓴다.",
   "version": 1,
-
   "derivesFrom": {
-    "design-doc":        ["plan"],
-    "ia":                ["plan", "design-doc"],
-    "data-model":        ["plan", "ia"],
-    "design-concept":    ["plan"],
-    "policy":            ["plan", "ia", "data-model"],
-    "terms-privacy":     ["policy", "plan", "data-model"],
-    "screen-design":     ["ia", "design-concept", "data-model", "policy", "plan"],
-    "screen-design-index": ["ia", "screen-design"],
-    "ui-components":     ["screen-design", "design-concept"],
-    "scenario":          ["ia", "policy", "data-model", "screen-design"],
-    "user-stories":      ["plan", "ia"],
-    "doc-bundle-index":  []
+    "design-doc": [
+      "plan"
+    ],
+    "ia": [
+      "plan",
+      "design-doc"
+    ],
+    "data-model": [
+      "plan",
+      "ia"
+    ],
+    "design-concept": [
+      "plan"
+    ],
+    "policy": [
+      "plan",
+      "ia",
+      "data-model"
+    ],
+    "terms-privacy": [
+      "policy",
+      "plan",
+      "data-model"
+    ],
+    "screen-design": [
+      "ia",
+      "design-concept",
+      "data-model",
+      "policy",
+      "plan"
+    ],
+    "screen-design-index": [
+      "ia",
+      "screen-design"
+    ],
+    "ui-components": [
+      "screen-design",
+      "design-concept"
+    ],
+    "scenario": [
+      "ia",
+      "policy",
+      "data-model",
+      "screen-design"
+    ],
+    "user-stories": [
+      "plan",
+      "ia"
+    ],
+    "doc-bundle-index": [],
+    "backend-architecture": [
+      "plan",
+      "ia",
+      "policy",
+      "data-model"
+    ],
+    "backend-storage": [
+      "data-model",
+      "policy",
+      "backend-architecture"
+    ],
+    "backend-schema": [
+      "data-model",
+      "backend-storage"
+    ],
+    "backend-interface": [
+      "screen-design",
+      "ia",
+      "policy",
+      "data-model",
+      "backend-architecture",
+      "backend-storage"
+    ]
   },
-
   "$comment_notes": {
     "ui-components": "화면 설계에서 공통 컴포넌트가 자란다 — 화면이 요구하는 값(파라미터)이 생기면 인벤토리가 따라가야 한다. 이 방향이 지도에 없어서 실제로 뚫린 적이 있다(UI.nav.gnb 활성 워크스페이스 파라미터 누락).",
     "terms-privacy": "약관은 계정·결제 같은 상위 정의를 산문으로 서술한다. ID 참조가 없어 죽은 링크로도 안 잡히므로 파장 지도로만 잡힌다.",
-    "doc-bundle-index": "색인은 파생물이 아니라 목록이다. 상류가 없다."
+    "doc-bundle-index": "색인은 파생물이 아니라 목록이다. 상류가 없다.",
+    "backend-interface": "요구(화면 동작 data.io 중 target=server·프로젝트 요청서·운영 요구)를 근거로 전송 방식과 규격을 확정한다. 화면 설계가 바뀌면 여기가 따라와야 한다 — 그 방향이 파장 지도에 없으면 '화면은 고쳤는데 계약은 그대로'가 안 보인다."
   }
 }

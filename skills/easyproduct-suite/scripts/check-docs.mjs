@@ -285,6 +285,32 @@ for (let qi = 0; qi < queue.length; qi++) {
   }
 }
 
+// ── 백엔드 등기부 적재 (있을 때만 — 백엔드 문서가 없는 세트에서도 그대로 돈다) ──
+const be = { itf: new Set(), store: new Set(), table: new Set(), mod: new Set(), ext: new Set(), authMode: new Set() };
+const screenIo = [];        // {id, screen, action, target, doc}
+const beBasis = [];         // {itfId, kind, ref, why, doc}
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError) continue;
+    for (const i of (o.interfaces || [])) {
+      be.itf.add(i.id);
+      for (const b of (i.basis || [])) beBasis.push({ itfId: i.id, ...b, doc: doc.path });
+    }
+    for (const s of (o.stores || [])) be.store.add(s.id);
+    for (const t of (o.tables || [])) be.table.add(t.id);
+    for (const m of (o.modules || [])) be.mod.add(m.id);
+    for (const x of (o.integrations || [])) be.ext.add(x.id);
+    for (const a of (o.authModes || [])) be.authMode.add(a.mode);
+    // 화면 동작(io) — 백엔드 요구의 출처
+    for (const s of (o.screens || [])) {
+      const dat = Array.isArray(s.data) ? {} : (s.data || {});
+      for (const a of (dat.io || [])) {
+        screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null, op: a.op || null, doc: doc.path });
+      }
+    }
+  }
+}
+
 // 데이터 참조 해석: <group> 또는 <group>.<field>
 function dataRefOk(ref) {
   const bare = ref.replace(/^DATA\./, '');
@@ -326,8 +352,75 @@ for (const doc of loaded) {
     }
   }
 }
+// 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError) continue;
+    for (const i of (o.interfaces || [])) {
+      for (const st of [...(i.reads || []), ...(i.writes || [])]) {
+        refChecked++; if (!be.store.has(st)) { report(`  ❌ ${doc.path}: ${i.id} 의 저장소 ${st} → backend.stores에 없음`); dead++; }
+      }
+      const mode = i.auth && i.auth.mode;
+      if (mode && be.authMode.size) { refChecked++; if (!be.authMode.has(mode)) { report(`  ❌ ${doc.path}: ${i.id} 의 auth.mode ${mode} → backend.system의 authModes에 없음`); dead++; } }
+    }
+    for (const s of (o.stores || [])) for (const h of (s.holds || [])) {
+      if (!h.group) continue;
+      refChecked++; if (!dataRefOk(h.group)) { report(`  ❌ ${doc.path}: 저장소 ${s.id} 가 담는 그룹 ${h.group} → 데이터 모델에 없음`); dead++; }
+    }
+  }
+}
+// 근거(basis) — 등기부가 있는 갈래는 실재 확인, 없는 갈래는 사유(why) 필수.
+const ioById = new Map(screenIo.filter((x) => x.id).map((x) => [x.id, x]));
+for (const b of beBasis) {
+  if (b.kind === 'screen-io') {
+    if (!b.ref || b.ref.includes('#')) continue;              // 합성 참조(id 없는 옛 문서)는 대조 불가 — 아래에서 집계
+    refChecked++; if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+  } else if (b.kind === 'policy') {
+    refChecked++; if (!reg.pol.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → policy.rules에 없음`); dead++; }
+  } else if (b.kind === 'ops' || b.kind === 'legacy') {
+    // 등기부가 없는 갈래다 — 사유가 없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
+    if (!b.why || !String(b.why).trim()) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 "${b.ref}"(${b.kind})에 why 없음 — 등기부 없는 갈래는 사유 필수`); dead++; }
+  }
+}
+
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
+
+// ── 요구 → 계약 커버리지 (백엔드 문서가 있을 때만) ──
+// io는 서버 통신 전용이 아니다. `target`의 첫 마디로 갈래를 판정하고, server인 것만 대조한다.
+if (screenIo.length) {
+  const kindOf = (t) => (t ? String(t).split('.')[0] : null);
+  const covered = new Set(beBasis.filter((b) => b.kind === 'screen-io').map((b) => b.ref));
+  const serverIo = screenIo.filter((x) => kindOf(x.target) === 'server');
+  const untargeted = screenIo.filter((x) => !x.target);
+  const withOp = screenIo.filter((x) => x.op);
+  const quals = new Map();
+  for (const x of screenIo) {
+    if (!x.target || !x.target.includes('.')) continue;
+    quals.set(x.target, (quals.get(x.target) || 0) + 1);
+  }
+  if (be.itf.size) {
+    const missed = serverIo.filter((x) => !(x.id && covered.has(x.id)) && !covered.has(`FEAT.${x.screen}#${x.action}`));
+    if (missed.length) {
+      report(`\n  ⚠ 덮이지 않은 요구 ${missed.length}건 — 서버와 주고받는 동작인데 어느 인터페이스의 basis에도 없음`);
+      for (const m of missed.slice(0, 5)) report(`     · ${m.id || `${m.screen}#${m.action}`} (${m.doc})`);
+      if (missed.length > 5) report(`     · 외 ${missed.length - 5}건`);
+    } else {
+      report(`\n  ✅ 요구 커버리지: server 동작 ${serverIo.length}건 모두 basis에 담김`);
+    }
+  }
+  if (untargeted.length) {
+    report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);
+    report('     → 없으면 백엔드가 로컬 저장까지 서버 인터페이스로 잘못 도출한다. 화면 설계 스킬의 버전업(gap-fill)으로 채우세요.');
+  }
+  if (withOp.length) {
+    report(`  ⚠ 폐기된 \`data.io[].op\` ${withOp.length}건 — **이관 필요**(백엔드 인터페이스 계약의 basis로 옮기고 비우세요)`);
+  }
+  if (quals.size) {
+    report(`  · target 한정자: ${[...quals.entries()].map(([k, v]) => `${k} ${v}건`).join(' · ')}`);
+    report('     (한정자 등기부는 아직 없다 — 표기가 갈렸으면 통일하세요)');
+  }
+}
 
 // ── 3차: 파장·신선도 (상위 결정이 바뀌었는데 하류가 안 따라갔나) ──
 // 죽은 링크가 "가리킨 것이 실재하나"라면, 이 검사는 **"바뀐 것을 따라갔나"**를 본다.
