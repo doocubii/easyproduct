@@ -391,6 +391,18 @@ report('\n[3] 파장 · 신선도');
       report(JSON.stringify(snap, null, 2).split('\n').map(l => '    ' + l).join('\n'));
     }
 
+    // 옛 버전으로 만든 세트를 알아보고 **무엇을 해야 하는지** 알려 준다.
+    // 이걸 집계해 보고하지 않으면 기존 세트는 "조용히 통과"하고, 새 기능(파장·신선도)을
+    // 영원히 못 얻는다 — 새로 만드는 세트만 혜택을 보는 반쪽 릴리즈가 된다.
+    {
+      const noRev = allDocs.filter((d) => d.revision == null && !['doc-bundle-index', 'review'].includes(d.docType));
+      if (noRev.length) {
+        report(`  ⚠ \`revision\`(결정 개정 번호)이 없는 문서 ${noRev.length}개 — **업그레이드 필요**`);
+        report(`     ${noRev.slice(0, 5).map((d) => d.path).join(', ')}${noRev.length > 5 ? ` 외 ${noRev.length - 5}개` : ''}`);
+        report('     → 각 문서의 스킬 버전업(gap-fill)으로 `revision: 1`을 채우세요. 없으면 신선도 판정이 해시 단독이라 사소한 편집에도 경고가 뜹니다.');
+      }
+    }
+
     if (!latest) {
       report('  ⚠ 리뷰 산출물이 없습니다 — LLM 층(산문·미러 충실도, 파장 확인) **미실행**으로 봅니다.');
       report(`     기계 점검 통과는 "구조는 맞음"이지 "검증 완료"가 아닙니다. 템플릿: easyproduct-suite/assets/review-template.md`);

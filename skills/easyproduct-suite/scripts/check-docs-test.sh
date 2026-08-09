@@ -196,5 +196,16 @@ expect_out "그래도 하류를 지목한다" "하류 재검토 필요"
 expect_no_out "'개정 번호 없이 수정됨'으로 오인하지 않는다" "개정 번호 없이 수정됨"
 
 echo
+echo "[6] 옛 형식 세트(revision 없음) — '업그레이드 필요'를 집계해 알려준다"
+# 계약을 바꾸면 **기존 문서를 올려 주는 경로**도 함께 내야 한다(CLAUDE.md "기존 문서의 업그레이드 경로").
+# 그 경로의 마지막 고리가 '가시화'다 — 누락을 집계해 알려주지 않으면 기존 세트는 조용히 통과하고
+# 새 기능(파장·신선도)을 영원히 못 얻는다.
+sed -i '/^revision: /d' "$SET"/ssot/*.md "$SET"/screens/user/*.md
+run >/dev/null
+expect_out "revision 없는 문서를 센다" "없는 문서"
+expect_out "업그레이드가 필요하다고 말한다" "업그레이드 필요"
+expect_out "무엇을 하라고 알려준다" "gap-fill"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
