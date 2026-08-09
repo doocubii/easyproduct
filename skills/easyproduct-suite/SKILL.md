@@ -107,7 +107,7 @@ doc-builder가 정식으로 가진 모드를 고르는 것이다). 초안 모드
   존재 여부만이 아니라 **해당 하위 스킬의 현재 산출물 구조(그 스킬의 assets 템플릿)와 대략
   맞는지**도 함께 살핀다. 눈에 띄게 다르면(예: 화면설계서가 도메인별로 안 갈리고 한 파일뿐이다,
   UI 컴포넌트 인벤토리 파일 자체가 없다, 로그인 필요 필드가 없다, 기능 ID(FEAT)가 없다,
-  **정책서에 규칙 ID(`POL.*`)가 없다**, **데이터 모델에 그룹별 인라인 JSON 미러가 없다**, **frontmatter에 `revision`(결정 개정 번호)이 없다**, **`reference/reviews/`에 풀 리뷰 산출물이 하나도 없다** 등)
+  **정책서에 규칙 ID(`POL.*`)가 없다**, **데이터 모델에 그룹별 인라인 JSON 미러가 없다**, **frontmatter에 `revision`(결정 개정 번호)이 없다**, **`reference/reviews/`에 풀 리뷰 산출물이 하나도 없다**, **화면 설계서의 `data.io[]`에 `target`(server/local/client)이 없다**, **폐기된 `data.io[].op`가 남아 있다** 등)
   **"오래된 구조로 보이는데 최신 구조로 업그레이드할까요?"**를 한 번 확인한다. 예라고 하면
   **재사용이 아니라 그 하위 스킬의 재진입/버전업 절차**로 넘긴다(처음부터 다시 만들지 않고
   gap만 채우는 절차 — 스킬마다 이름이 다르다):
@@ -118,6 +118,9 @@ doc-builder가 정식으로 가진 모드를 고르는 것이다). 초안 모드
   - **세트 공통 gap-fill(모든 스킬 공통 — 어느 스킬로 라우팅하든 함께 채운다):**
     - **`revision`이 없는 문서**는 그 스킬의 버전업 절차에서 **`revision: 1`을 채운다**(내용은 손대지 않는다.
       기존 문서가 몇 번 고쳐졌든 지금을 1세대로 본다 — 과거 이력을 지어내지 않는다).
+    - **화면 설계서의 `io[].target`이 없으면** `easyproduct-screen-design`의 **버전업(gap-fill)**으로 채운다
+      (server/local/client 판정 + `id` 부여 + 폐기된 `op` 이관). 없으면 백엔드 설계가 **로컬 저장까지
+      서버 인터페이스로 잘못 도출**한다.
     - **리뷰 산출물이 없으면** Stage 4의 3-3으로 **첫 리뷰 기록을 만든다**(`reference/reviews/`).
       이때 `schemas/review.v1.schema.json` 사본을 세트 `schemas/`로 복사한다. 스냅샷 해시는
       `node scripts/check-docs.mjs <루트> --print-snapshot`이 만들어 준다.
@@ -326,6 +329,7 @@ Stage 1이 끝나면 다음 단계로 넘길 것을 정리해 둔다(자세한 �
    - **"화면 설계서까지 만들까요?"**(기본은 사용자 앱 기준) → 예면 Stage 3.8-A로. 아니오면 Stage 4(연결)로 바로 간다.
      (관리자 백오피스 화면 설계서는 3.8-A가 끝난 뒤 별도로 묻는다 — Stage 3.8-B 참고.)
    - (화면 설계 여부와 별개로) 맨 마지막에 **"spec-kit으로 넘길 인계 안내문을 만들까요?"**(Stage 5)를 묻는다.
+   - **백엔드 설계**(Stage 3.9)는 화면 설계가 끝난 뒤에 묻는다 — 데이터 모델과 화면 동작이 있어야 성립하므로 여기서 미리 묻지 않는다.
 
 ## Stage 3.8: 화면 설계 (easyproduct-screen-design 조율 · 옵트인)
 
@@ -414,6 +418,23 @@ Stage 3.8(화면 설계)이 실행됐을 때만, 그 끝에 한 번 묻는다:
 - 산출물: **`supporting/scenarios/scenario-{도메인}-{이름}.md`**(mermaid flowchart 파생 뷰 포함). 생성되면 Stage 4 색인에 "보강자료"로 추가한다.
 - 파생 중 **설계 결함**(흐름이 안 이어짐 등)이 드러나면 Stage 4의 정합·추적 점검과 같은 방식으로 **회귀 후보와 함께 보고**하고 사용자가 진행을 정한다.
 - 이 뒤 게이트와 별개로, 흐름이 복잡한 서비스는 **앞 게이트(Stage 1.5 시나리오 스케치)**로 화면을 짓기 전에 흐름을 먼저 검증하는 편이 비용이 싸다.
+
+## Stage 3.9: 백엔드 설계 (easyproduct-backend 조율 · 옵트인)
+
+**언제 묻나**: 화면 설계(3.8)까지 끝난 뒤. 백엔드 설계는 **데이터 모델과 화면의 동작(`data.io`)이 있어야
+성립**하므로 파이프라인 뒷부분에 온다. 화면 설계를 건너뛴 경우에도 데이터 모델·IA·정책만으로 진행할 수
+있으나, 그러면 인터페이스의 근거가 얇아진다는 점을 알린다.
+
+- **한 번 묻는다**: "서버(백엔드)까지 설계할까요? — 시스템 구성·저장 설계·논리 스키마·인터페이스 계약을
+  문서로 만듭니다." 아니오면 Stage 4로 간다.
+- 예면 `easyproduct-backend`를 호출한다. 도입·자료 요청은 생략하고 **기획서·IA·데이터 모델·정책서·
+  (있으면) 화면 설계서**를 입력으로 넘긴다.
+- **데이터 모델이 없으면 저장 설계를 하지 않는다** — 데이터의 뜻이 안 정해졌는데 저장 위치를 정하는 것은
+  순서가 뒤집힌 것이다. 그 경우 Stage 2.5를 먼저 채운다.
+- 산출물은 `ssot/backend/` 아래 네 문서(아키텍처·저장 설계·논리 스키마·인터페이스 계약)다. 스키마 사본
+  네 개를 세트 `schemas/`로 복사한다. 만들어지면 Stage 4 색인에 넣는다.
+- **전송 방식은 백엔드가 정한다**(REST·gRPC·GraphQL·WebSocket·큐). 화면 설계서는 전송을 모른다 —
+  화면은 `data.io[].target`으로 **누구와 주고받는지**(server/local/client)까지만 말한다.
 
 ## Stage 4: 연결 · 마무리 (이 스킬의 고유 단계)
 
@@ -529,6 +550,13 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 - 안내문을 만들고 나면 **present_files로 즉시 전달**한다(또는 Claude Code 환경이면 파일 경로를 알려준다).
   색인에는 "spec-kit 인계 안내문(전달됨, 세트 폴더 구조 밖)" 항목을 추가한다.
 
+**백엔드 설계(Stage 3.9)를 만들었으면 백엔드 인계장을 따로 만든다.**
+`assets/speckit-handoff-backend-template.md`로 `speckit-handoff-backend.md`를 만들어 전달한다.
+- 백엔드는 인증·배포·리포지토리가 프론트와 갈리는 별개 프로젝트인 경우가 대부분이라 인계장을 섞지 않는다.
+- **데이터 모델과 인터페이스 계약은 프론트·백엔드가 공유하는 SSOT**다. 양쪽 인계장에 모두 넣고,
+  각각에 "이 구조를 바꾸면 반대쪽에 영향이 간다 — 임의로 바꾸지 말고 문서를 함께 갱신하라"를 명시한다.
+- 프론트 인계장에는 **인터페이스 계약을 '읽어서 따를 것'**으로, 백엔드 인계장에는 **'이 계약의 SSOT'**로 적는다.
+
 **화면 설계서가 사용자 앱·백오피스 둘 다 있으면, 인계 안내문도 프로젝트별로 둘 만든다.**
 사용자 앱과 백오피스는 별개 프로젝트로 개발될 가능성이 높으므로(인증·배포·리포지토리가 다름),
 인계장 한 개에 두 화면 설계서를 섞지 않는다. 둘 다 위와 같이 **만들어 바로 전달**하며, 파일명은
@@ -575,7 +603,8 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 - **(옵트인) spec-kit 인계 안내문** — `assets/speckit-handoff-template.md`로 만든 인계장 (Stage 5)
 
 조율 대상 하위 스킬: `easyproduct-doc-builder` · `easyproduct-ia-designer`(IA 생성 + 선택 모듈 "기능 관계도") ·
-`easyproduct-data-model` · `easyproduct-design-concept` · `easyproduct-policy-legal` · `easyproduct-screen-design`. 각 Stage에서
+`easyproduct-data-model` · `easyproduct-design-concept` · `easyproduct-policy-legal` · `easyproduct-screen-design` ·
+`easyproduct-backend`(옵트인 · Stage 3.9). 각 Stage에서
 해당 스킬의 SKILL.md를 읽고 따르되 도입·자료요청만 합친다.
 
 참고 자산:
@@ -585,6 +614,7 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 - `scripts/skill-lint.mjs` — **스킬 부합 린트(무의존 Node).** 베타 머지 게이트의 **기계 가능** 항목(빈 껍데기 금지·뜻 필수·정합성 점검 절 존재·점검기 자산)을 자동 점검하고 실패 시 종료코드 1. 문서 세트가 아니라 **스킬 저장소 자체**에 겨눈다(`node skills/easyproduct-suite/scripts/skill-lint.mjs`). 근거·의미 판단 항목은 checker-guide "스킬 부합 점검".
 - `assets/doc-bundle-index-template.md` — 세트를 한 장으로 묶는 색인 문서 구조 (이대로 채운다. frontmatter + `docbundle.docs` 매니페스트 포함)
 - `assets/speckit-handoff-template.md` — spec-kit(SDD)으로 넘길 인계 안내문 구조 (Stage 5에서 이대로 채운다)
+- `assets/speckit-handoff-backend-template.md` — **백엔드 인계장** 구조 (백엔드 설계를 만들었을 때 별도로 만든다)
 - `schemas/docbundle.v1.schema.json` — 색인 `docbundle.docs` 매니페스트 블록의 JSON Schema 계약(스킬 소유 고정 자산, 색인 옆 `schemas/`로 복사).
 
 
@@ -612,8 +642,8 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.7.0`
-- **릴리즈 날짜**: 2026-08-09
+- **버전**: `0.8.0`
+- **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
 - 버전·릴리즈 확정 규칙은 저장소의 `VERSIONING.md`, 버전별 변경 내역은 `CHANGELOG.md`에 있다.
