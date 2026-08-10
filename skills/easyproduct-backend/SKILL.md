@@ -61,7 +61,7 @@ description: |
 | 백엔드 아키텍처 | `ssot/backend-architecture.md` | `backend-architecture` | `backend.system` | `backend-architecture.v1` | `BEARCH` | prose |
 | 저장 설계 | `ssot/backend-storage.md` | `backend-storage` | `backend.stores` | `backend-storage.v1` | `BESTORE` | prose |
 | 논리 스키마 | `ssot/backend-schema.md` | `backend-schema` | `backend.tables` | `backend-schema.v1` | `BESCHEMA` | prose |
-| 인터페이스 계약 | `ssot/backend-interface.md` (+ `apis/` 부분 파일) | `backend-interface` | `backend.interfaces` | `backend-interface.v1` | `BEITF` | prose |
+| 인터페이스 계약 | `ssot/backend-interface.md` (+ `interfaces/` 부분 파일) | `backend-interface` | `backend.interfaces` | `backend-interface.v1` | `BEITF` | prose |
 
 **저장 설계와 논리 스키마는 층이 다르다.** 저장 설계는 **어느 저장소의 어느 그릇에 두고 무엇으로 빨리
 찾나**(배치·키·인덱스·격리·보존), 논리 스키마는 **그 그릇 안이 어떻게 생겼나**(컬럼·논리 타입·열거값·
@@ -110,9 +110,14 @@ description: |
 - **인터페이스 ID는 파일이 달라도 전역 유일.**
 - 사람용 길 안내는 진입 파일에 산문 링크로 적는다.
 
-**부분 파일은 `apis/` 하위 폴더에 모은다.** 진입 문서 옆에 늘어놓으면 아키텍처·저장·스키마 세 문서가
-API 부분 파일 여섯 개 사이에 파묻혀 **네 산출물의 구분이 사라진다.** 폴더를 하나 두면 위층은 항상
-네 개(+`apis/`)로 보인다.
+**부분 파일은 `interfaces/` 하위 폴더에 모은다.** 진입 문서 옆에 늘어놓으면 아키텍처·저장·스키마 세
+문서가 부분 파일 여섯 개 사이에 파묻혀 **네 산출물의 구분이 사라진다.** 폴더를 하나 두면 위층은 항상
+네 개(+`interfaces/`)로 보인다.
+
+이름을 `apis/`로 하지 않는 이유는 **이 계약이 REST 전용이 아니기 때문**이다 — `transport`가
+`rest`·`grpc`·`graphql`·`ws`·`queue`이고 앵커도 `BEITF`(interface)다. 큐 토픽·WS 채널이 담긴 파일이
+`apis/`에 있으면 어휘가 어긋난다. 문서명(`backend-interface.md`)·블록(`backend.interfaces`)·앵커·
+짝 폴더(`interface-requests/`)가 모두 같은 어휘라 여기도 맞춘다.
 
 ```
 ssot/backend/
@@ -120,10 +125,15 @@ ssot/backend/
 ├── backend-storage.md
 ├── backend-schema.md
 ├── backend-interface.md          ← 진입(공통 규약 + includes). 블록 없음
-└── apis/
-    ├── user-auth.md        ← 이름에서 backend-api- 접두를 뗀다(폴더가 이미 말한다)
+└── interfaces/
+    ├── user-auth.md        ← 이름에서 backend-interface- 접두를 뗀다(폴더가 이미 말한다)
     └── …
 ```
+
+> **이미 다른 이름을 쓰는 프로젝트는 그 이름을 그대로 둔다.** 이 폴더 이름은 **관례일 뿐 계약이 아니다** —
+> 부분 파일을 찾는 정본은 진입 파일의 `machine.includes`이고, 점검기는 그것만 따라가므로 폴더 이름이
+> 무엇이든 그대로 돈다. `apis/`로 만들어진 세트를 발견하면 **바꾸라고 요구하지 않는다.** 이름을 옮기고
+> 싶다고 하면 폴더명과 `includes` 경로만 함께 고치면 된다(그 외에 따라 고칠 것은 없다).
 
 한 단계 깊어지므로 부분 파일의 **`machine.schema` 를 `../../../schemas/…` 로** 올려 주고, 형제 문서를
 가리키는 상대 링크에도 `../` 를 붙여 고친다. 점검기는 폴더를 재귀로 훑고 `includes` 를 따라가므로
@@ -667,7 +677,7 @@ JSON 블록은 미러)다.
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를
 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.10.0`
+- **버전**: `0.10.1`
 - **릴리즈 날짜**: 2026-08-11
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
