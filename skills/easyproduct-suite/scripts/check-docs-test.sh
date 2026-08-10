@@ -912,6 +912,18 @@ sed -i 's/IO.backoffice.shell.session/IO.frame.shell.session/' "$FR/screens/back
 node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
 expect_out "범위를 빼면 두 범위가 충돌하는 것을 잡는다" "중복 동작 id: IO.frame.shell.session"
 
+# ⓕ **범위가 하나뿐이면 충돌이 안 나 조용히 통과한다** — 그래서 소유자와 직접 대조한다.
+#    (계약을 바꿔 놓고 기존 문서 업그레이드 경로를 안 내면 여기가 영영 안 보인다.)
+rm -f "$FR/screens/user/screen-design-user-index.md"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_no_out "범위가 하나면 중복은 안 난다" "중복 동작 id"
+expect_out "그래도 소유 프레임과 어긋난 id를 잡는다" "소유 프레임과 어긋난 동작 id"
+expect_out "무엇으로 바꾸라는지 알려준다" "IO.backoffice.shell.<동작>"
+expect_out "백엔드 basis도 함께 고치라고 알려준다" "죽은 링크로 잡힌다"
+mkframe "$FRAME_OK"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_no_out "이관하면 해제된다" "소유 프레임과 어긋난 동작 id"
+
 echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
