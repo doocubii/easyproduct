@@ -424,8 +424,9 @@ Stage 3.8(화면 설계)이 실행됐을 때만, 그 끝에 한 번 묻는다:
 화면 설계가 끝나면, 백엔드에 넘길 **인터페이스 요청서**를 기계로 생성한다(`easyproduct-screen-design`의
 "인터페이스 요청서 내주기"). 백엔드가 화면 설계서를 직접 뒤지지 않게 하는 **층 분리** 장치다.
 
-- `node scripts/check-docs.mjs <세트> --emit-interface-request [--transport …] [--scope user] > interface-request-<범위>.md`
-- 색인에 `role: handoff`로 넣는다(SSOT 아님 · 재생성 가능한 파생물).
+- `node scripts/check-docs.mjs <세트> --emit-interface-request [--transport …] [--scope user] > interface-requests/interface-request-<범위>.md`
+- **두는 곳은 `interface-requests/`**(기본값). 범위별로 파일이 갈린다. 프로젝트가 다른 위치를 쓰면 그걸 따르되 **색인에 등재**해야 점검·파장 대상이 된다.
+- 색인에 `role: handoff`로 넣는다(SSOT 아님 · 재생성 가능한 파생물). **커밋 대상이다** — 색인과 달리 다른 팀에 넘기는 산출물이라 저장소에 남아야 한다.
 - 화면이 개정되면 점검기가 "요청서가 낡았다"를 잡으므로, 그때 **다시 생성**한다.
 
 ## Stage 3.9: 백엔드 설계 (easyproduct-backend 조율 · 옵트인)
