@@ -655,6 +655,13 @@ if (screenIo.length) {
     report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);
     report('     → 없으면 백엔드가 로컬 저장까지 서버 인터페이스로 잘못 도출한다. 화면 설계 스킬의 버전업(gap-fill)으로 채우세요.');
   }
+  // 정책·의미 요건이 하나도 없는 서버 동작은 **화면 산문에 있는데 블록이 안 담았을** 수 있다(손실 미러).
+  // 정말 없을 수도 있으므로 오류가 아니라 정보로 알린다 — 백엔드가 오류 근거·멱등을 정할 재료가 그만큼 없다.
+  const bare = serverIo.filter((x) => !(x.policies || []).length && !x.semantics);
+  if (bare.length) {
+    report(`  · 정책·행동 규약이 비어 있는 서버 동작 ${bare.length}건 — 화면 산문에 있는데 안 담긴 것인지 확인하세요`);
+    report('     (없으면 그대로 두면 된다. 있는데 안 담기면 백엔드가 오류 근거·멱등·정렬을 정할 재료가 없다)');
+  }
   if (withOp.length) {
     report(`  ⚠ 폐기된 \`data.io[].op\` ${withOp.length}건 — **이관 필요**(백엔드 인터페이스 계약의 basis로 옮기고 비우세요)`);
   }
