@@ -3,6 +3,7 @@ doc_type: design-concept
 doc_id: [프로젝트-slug]
 title: "디자인 컨셉: [프로젝트 이름]"
 version: 1
+revision: 1                 # 결정 개정 번호. 이 문서의 **결정**이 바뀔 때만 +1(문구·오타 수정은 올리지 않는다).
 ssot: prose                 # 안별 색·글꼴 정의(사람용)가 원본, tokens 블록은 선택된 안의 파생 미러
 machine:
   lang: json

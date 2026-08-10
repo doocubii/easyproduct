@@ -16,6 +16,7 @@
 |---|---|---|---|
 | `doc_type` | ✅ | kebab-case (아래 레지스트리) | 문서 종류 식별. 매니페스트의 `docType`과 대조. |
 | `version` | ✅ | 정수 | payload 계약 버전. `v1` 문서는 언제나 v1 스키마로 검증. |
+| `revision` | – | 정수 | **결정 개정 번호.** 그 문서가 담은 **결정이 바뀔 때만** +1 한다(오타·문구·서식 수정은 올리지 않는다). 문서를 만드는 스킬이 올린다. `version`(payload 계약 버전)과 **다른 축**이니 혼동하지 말 것 — `version`은 스키마 계약, `revision`은 내용 결정의 세대다. 파장·신선도 점검의 1차 신호(아래 '변경 전파와 신선도'). |
 | `ssot` | ✅ | `table` \| `prose` | drift 수리 방향. `table`=사람용 표가 원본·기계 블록은 미러 / `prose`=산문이 원본. 표↔블록이 어긋나면 **원본 쪽 기준으로** 블록을 재생성해야 한다(점검자는 어긋남을 보고, 재생성 주체는 스킬/LLM). |
 | `machine.lang` | – | `json` | 기계 블록의 언어(현재 항상 json). |
 | `machine.tag` | 기계블록 있으면 ✅ | info-string (아래) | 이 tag를 info-string으로 가진 fenced 코드블록만 "공식 기계 표현"이다. 추측하지 말고 이 tag로 찾는다. |
@@ -40,6 +41,7 @@
 | `plan` | (없음) | – | – | prose |
 | `design-doc` | (없음) | – | – | prose |
 | `user-stories` | (없음) | – | – | prose |
+| `use-cases` | (없음) | – | – | prose |
 | `ia` | `ia.features` | ia.v1 | `FEAT.<domain>.<name>` | prose |
 | `data-model` | `datamodel.group` | data-model.v1 | `DATA.<group>` | table |
 | `design-concept` | `design.tokens` | design.v1 | `token`(color.*/spacing.*/…) | prose |
@@ -50,6 +52,12 @@
 | `ui-components` | `uicomponents.list` | ui-components.v1 | `UI.*` | prose |
 | `scenario` | `scenario.trace` | scenario.v1 | `SCN.<domain>.<name>` | prose |
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
+| `review` | `review.snapshot` | review.v1 | (없음 — 점검 흔적) | prose |
+| `interface-request` | `interface.requests` | interface-request.v1 | (없음 — `IO.*`를 참조만) | prose |
+| `backend-architecture` | `backend.system` | backend-architecture.v1 | `BEARCH.mod.*`·`BEARCH.ext.*` | prose |
+| `backend-storage` | `backend.stores` | backend-storage.v1 | `BESTORE.<이름>` | prose |
+| `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |
+| `backend-interface` | `backend.interfaces` | backend-interface.v1 | `BEITF.<범위>.<도메인>.<이름>` | prose |
 
 ## anchor·네임스페이스 레지스트리 (크로스도큐먼트 참조 라우팅)
 
@@ -65,6 +73,11 @@
 | `UI.*` | 컴포넌트 | `uicomponents.list`의 `components[].id`(+ 화면 파일의 로컬) |
 | `SCN.<domain>.<name>` | 시나리오 | `scenario.trace`의 `scenarios[].id` |
 | `color.*` `spacing.*` `radius.*` `type.*` | 디자인 토큰 | `design.tokens`의 `tokens.<category>.<name>` |
+| `BEITF.<범위>.<도메인>.<이름>` | 백엔드 인터페이스 | `backend.interfaces`의 `interfaces[].id` |
+| `BESTORE.<이름>` | 저장소 | `backend.stores`의 `stores[].id` |
+| `BESCHEMA.<테이블>` | 논리 테이블 | `backend.tables`의 `tables[].id` |
+| `BEARCH.mod.*` / `BEARCH.ext.*` | 시스템 조각 / 외부 연동 | `backend.system`의 `modules[].id` / `integrations[].id` |
+| `IO.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
 
 > **데이터 필드만 접두사가 없다**(`user.email`처럼). 규칙: `<X>.<Y>` 꼴이고 `X`가 `datamodel.group`의 어떤 그룹 로컬 이름과 같으면 데이터 필드로 해석한다. (그룹 anchor는 `DATA.` 접두사가 붙지만 필드는 안 붙인다 — 사람용 표 가독성 유지 결정.)
 
@@ -82,6 +95,76 @@
 4. **크로스도큐먼트 참조 무결성**: 위 레지스트리대로 접두사 라우팅 → 실재 확인. 끊긴 참조 보고.
 5. **drift(정합) 점검**: 사람용 표현과 기계 블록이 어긋나는지. `ssot`가 가리키는 원본 쪽을 진실로 보고 보고한다(자동 재생성은 스킬/LLM 몫, 점검자는 보고까지).
 6. **커버리지**(선택): 기획서의 핵심 행동·유스케이스가 시나리오에 닿는지 등 세트 규칙.
+
+## 요구와 계약 — 방향은 하나다 (백엔드가 붙을 때)
+
+화면의 **동작**(`data.io[]`)은 "이 동작이 무엇을 주고받나"이고, **상대는 `target`이 정한다** —
+`server`(서버 통신) · `local`(기기 저장) · `client`(화면 안 상태). **io는 서버 통신 전용이 아니다.**
+
+- **요구는 프론트가 파일로 넘긴다.** 화면 동작에서 **기계로 생성**한 `interface-request` 문서가 인계 산출물이고,
+  백엔드 설계는 이 문서를 **먼저** 읽고(프론트가 확인해 넘긴 것이므로 우선), 구현 단계의 개발자·에이전트는
+  **인터페이스 계약**을 보고 만든다 — 요구 → 계약 → 구현으로 층이 갈린다. SSOT가 아니라 **재생성 가능한 파생물**이라
+  손으로 고치지 않으며, `from[]`의 출처 스냅샷으로 낡음이 잡힌다. 전송은 `preferredTransport`로 **희망만** 싣는다.
+- **백엔드 인터페이스 계약이 요구를 가리킨다**(`interfaces[].basis[]` → 화면 io(`IO.*`)·요청서·정책·운영 요구).
+  **반대 방향(화면 → 계약)은 두지 않는다** — 같은 관계를 양쪽에 적으면 이중 기입이라 조용히 어긋난다
+  (`data.io[].op`는 그래서 폐기됐다).
+- 점검자는 **양방향으로** 본다:
+  - **요구 → 계약**: `target`의 첫 마디가 `server`인 io 중 어느 `basis`에도 안 담긴 것 → "덮이지 않은 요구"(경고).
+  - **계약 → 요구**: `basis`가 빈 인터페이스 금지. 등기부가 없는 갈래(`ops`·`legacy`)는 `why` 필수 —
+    없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
+- `target`의 **뒷마디(한정자)는 아직 등기부가 없다.** 점검자는 관측된 한정자를 **집계해 보고**해
+  표기가 갈린 것(`MAIN_SERVER` vs `main_server`)이 눈에 띄게 한다.
+
+## 변경 전파와 신선도 (상위 결정이 바뀌었을 때)
+
+죽은 링크 검사는 **"가리킨 것이 실재하나"**를 본다. 그런데 실전에서 더 자주 새는 것은
+**"바뀐 것을 따라갔나"**다 — 상류 문서의 결정이 바뀌었는데 하류가 그대로인 경우. 이건 참조가
+끊긴 게 아니라서 죽은 링크로 안 잡히고, **산문에만 있는 결정**(예: "GNB에 활성 워크스페이스 항상 표시")은
+어떤 ID도 참조하지 않아 기계 점검이 **원리적으로** 못 잡는다.
+
+그래서 세 가지를 계약으로 둔다.
+
+### 1) 파장 지도 — 무엇이 무엇에서 파생되나
+
+문서 **종류 사이**의 파생 관계는 프로젝트마다 같으므로 **스킬 자산**에 정본을 둔다:
+`easyproduct-suite/assets/propagation-map.json`(근거·읽는 법은 `references/propagation-map.md`).
+점검자는 매니페스트의 `docType`으로 실제 경로를 해석해 상류→하류 쌍을 만든다.
+특정 문서가 표준과 다른 상류를 가지면 매니페스트 항목의 **`derivesFrom`(선택)**이 그 문서에 한해 덮어쓴다.
+
+> 프로젝트 매니페스트에 파생 관계를 손으로 적게 하지 않는다 — 손으로 유지되는 중복은 틀어지면
+> **거짓말하는 지도**가 되고(빈 껍데기보다 나쁘다), 비전문가 authoring을 무겁게 한다.
+
+### 2) `revision` — 결정이 바뀌었다는 1차 신호
+
+- **결정이 바뀔 때만** +1 한다. 오타·문구·서식은 올리지 않는다(안 그러면 경고가 상시로 떠서 무시된다).
+- 올리는 주체는 **문서를 고치는 스킬**이다. 사용자에게 묻지 않는다.
+- **`version`과 다른 축이다.** `version`은 payload 계약 버전(v1)이라 내용이 바뀌어도 안 올라간다 —
+  신선도 신호로 쓰면 안 된다.
+
+### 3) 리뷰 산출물 — LLM 층에 흔적을 남긴다
+
+점검 3층 중 **소프트웨어 층만 산출물이 있고 LLM 층은 없다.** 산출물이 없는 단계는 건너뛰어도
+표가 나지 않고, **표가 나지 않는 단계는 건너뛰어진다**(실행자의 성실성 문제가 아니라 설계 문제다).
+
+→ 풀 리뷰는 `doc_type: review` 문서를 남긴다(관례 경로 `reference/reviews/review-<YYYY-MM-DD>.md`,
+템플릿 `easyproduct-suite/assets/review-template.md`, 계약 `review.v1`).
+그 블록의 **`sources` 스냅샷**(상류 문서의 그때 `revision` + `contentHash`)이 신선도 판정의 기준선이 된다.
+
+**점검자가 할 일 (7. 신선도 — 경고 층)**
+
+```
+for (상류, 하류) in 파장지도로 계산한 쌍:
+  snap = 최신 리뷰 산출물의 sources에서 상류를 찾는다
+  if snap 없음                          → "리뷰 기준선 없음"(정보)
+  else if snap.revision != 현재 revision → "상류가 개정됨(rN→rM) — 하류 재검토 필요"(경고)
+  else if snap.contentHash != 현재 hash  → "개정 번호 없이 수정됨 — 결정이 바뀌었다면 revision을 올려라"(경고)
+```
+
+- **경고이지 차단이 아니다.** 오탐 가능성이 있고(산문 다듬기 등), 리뷰 산출물 갱신으로 해제된다.
+- 리뷰 산출물이 하나도 없으면 **"LLM 층 미실행"**을 한 줄 안내한다 — 기계 통과만으로 "완료"라고
+  보고하지 못하게 하는 장치다.
+- **완료 어휘 규칙**: "완료/마무리/끝남"은 **소프트웨어 점검과 LLM 풀 리뷰가 모두** 통과했을 때만 쓴다.
+  기계 점검만 통과한 상태는 **"구조는 맞음, 의미 점검 미실행"**으로 보고한다.
 
 ## 스키마 위치·버전 규약
 
@@ -189,8 +272,21 @@ LLM 풀 리뷰는 비싸므로 **아무때나가 아니라 정해진 시점**에
       SKILL.md에 있나? *(의미 판단)*
 - [ ] **점검기 SW 3종** — `check-docs.mjs`가 형식·산문↔블록 매칭·유효성(스키마+크로스참조)을 다 하나? *(혼합)*
 - [ ] **정합성 점검 절의 일치** — 각 스킬의 "정합성 점검"이 위 3층·시기·수정 방향과 정확히 일치하나? *(의미 판단)*
+- [ ] **기존 문서 업그레이드 경로** — 이번 릴리즈가 **계약·구조를 바꿨다면**(frontmatter·블록 필드 추가/변경,
+      새 `doc_type`, 배치 규칙 변경, 점검기가 새로 보는 것) **네 가지가 다 있나?**
+      ① suite Step 1 재진입의 "낡은 구조" 트리거에 그 신호 ② 해당 스킬 gap-fill 절차의 "없으면 이렇게 채운다"
+      ③ 점검기의 "누락 n건 — 업그레이드 필요" 집계 보고 ④ 도그푸드의 기존 세트 재진입 경로.
+      **하나라도 없으면 반쪽 릴리즈다** — 새 기능을 신규 사용자만 얻고, 문서를 이미 가진 사람은 못 얻는다. *(의미 판단)*
 
 게이트가 하나라도 실패하면 **버전업/머지를 막고** 먼저 스킬을 고친다.
+
+> **예외: 문서를 산출하지 않는 installer 스킬** — 대상 프로젝트에 게이트·설정을 **설치**할 뿐 문서를 만들지
+> 않는 스킬(예: `easyproduct-sdd-harness`)은 위 3층 계약의 대상이 아니다. 3층은 "**스킬이 만든 문서**"를
+> 점검하는 계약이라, 산출 문서가 없는 스킬에 "점검 3층·정합성 점검" 문구를 억지로 넣는 것은 오히려
+> **빈 껍데기**다(문구만 있고 가리킬 대상이 없다). 대신 **게이트를 약화시키지 않는 대체 요구**를 건다:
+> **자기가 설치한 게이트가 무엇을 보장하지 않는지(한계)를 SKILL.md에 명시할 것.** 근거는 같다 —
+> "기계 통과 ≠ 검증 완료"를 스킬 자신이 사용자에게 말하게 하는 것. 스킬-린트가 이 대체 요구를
+> 자동 점검한다(`INSTALLER_SKILLS` 집합).
 
 > **기계 가능 항목의 참조 린트**: **`scripts/skill-lint.mjs`**(무의존 Node). 위 체크리스트의 기계 항목
 > — 빈 껍데기 금지(최상위 리스트 `minItems:1` + 식별자만 required인 엔트리 없음)·뜻 필수(`params`/`variants`의 `desc`)·

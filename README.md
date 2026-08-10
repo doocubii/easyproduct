@@ -61,6 +61,12 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
 | [`easyproduct-policy-legal`](./skills/easyproduct-policy-legal/) | 정책서 + 이용약관·개인정보처리방침 초안 | 가능 |
 | [`easyproduct-screen-design`](./skills/easyproduct-screen-design/) | 화면별 상세 설계서(구현 명세 수준) | 가능 |
 | [`easyproduct-scenario`](./skills/easyproduct-scenario/) | 사용자 여정 시나리오(흐름의 축) 작성 + 문서 간 정합·추적 점검 | 가능 |
+| [`easyproduct-backend`](./skills/easyproduct-backend/) | **(옵트인·뒷단)** 백엔드 설계 — 시스템 구성·저장 설계·논리 스키마·인터페이스 계약 | 가능 |
+| [`easyproduct-sdd-harness`](./skills/easyproduct-sdd-harness/) | **(개발자용·별도 층)** spec-kit 프로젝트에 SDD 강제 게이트를 설치·배선 | 가능 |
+
+> `easyproduct-sdd-harness`는 **문서를 만드는 스킬이 아니라 개발 단계의 하네스 설치 도구**입니다.
+> 위 7개 문서 스킬을 오케스트레이터가 조율하는 흐름과 **별개 층**이고, `easyproduct-suite`가 호출하지
+> 않으며, easyproduct 문서가 없는 순수 spec-kit 프로젝트에서도 단독으로 동작합니다.
 
 각 스킬은 **독립적으로도 동작**하도록 설계되어 있습니다 — 서로의 내부 파일을 직접 참조하지
 않고, 필요한 재료(기획서, IA, 데이터 모델 등)를 입력으로 받아 동작합니다. `easyproduct-suite`는
@@ -105,7 +111,7 @@ Repository: [github.com/doocubii/easyproduct](https://github.com/doocubii/easypr
   (= `C:\Users\<사용자명>\.claude\skills\`). 어느 프로젝트에서든 쓰입니다.
 - **프로젝트 전용** — 작업 폴더 안의 `.claude/skills/`. 그 프로젝트에서만 쓰입니다.
 
-**간편 설치 스크립트 (권장):** 저장소 루트의 설치 스크립트가 8개 스킬을 한 번에 복사합니다.
+**간편 설치 스크립트 (권장):** 저장소 루트의 설치 스크립트가 10개 스킬을 한 번에 복사합니다.
 `.claude/skills` 폴더가 없으면 만들어 주고, 이미 있는 스킬은 최신 내용으로 갱신합니다.
 
 ```bash
@@ -149,11 +155,11 @@ Copy-Item -Recurse -Force ".\easyproduct\skills\<스킬-폴더명>" "$env:USERPR
 # 또는 프로젝트 전용으로 복사
 Copy-Item -Recurse -Force ".\easyproduct\skills\<스킬-폴더명>" ".\.claude\skills\"
 
-# 8개 스킬을 전역에 한 번에 복사하려면:
+# 10개 스킬을 전역에 한 번에 복사하려면:
 Copy-Item -Recurse -Force ".\easyproduct\skills\*" "$env:USERPROFILE\.claude\skills\"
 ```
 
-> 세트로 쓰려면 `easyproduct-suite`를 포함해 8개 폴더를 모두 복사하세요. 복사 후 새 Claude Code
+> 문서 세트로 쓰려면 `easyproduct-suite`를 포함해 문서 스킬 8개 폴더를 복사하세요(백엔드 설계·개발 단계 하네스까지 쓰려면 10개 전부). 복사 후 새 Claude Code
 > 세션을 시작하면 스킬이 인식됩니다.
 
 ## 사용 예시
@@ -366,8 +372,8 @@ spec-kit(및 그 위에서 동작하는 AI 에이전트)이 판단하도록 합�
 
 ## 버전·릴리즈
 
-- **현재 버전: `0.5.0`**
-- **릴리즈 날짜: `2026-07-23`**
+- **현재 버전: `0.8.0`**
+- **릴리즈 날짜: `2026-08-10`**
 - 세트 전체가 **하나의 버전**을 공유합니다(각 스킬은 이 세트 버전을 표시). 버전·날짜를 언제 확정하는지는
   [VERSIONING.md](./VERSIONING.md), 변경 내역은 [CHANGELOG.md](./CHANGELOG.md)를 보세요.
 

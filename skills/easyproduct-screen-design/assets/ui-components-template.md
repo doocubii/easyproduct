@@ -3,6 +3,7 @@ doc_type: ui-components
 doc_id: [scope]
 title: "UI 컴포넌트 인벤토리 ({scope})"
 version: 1
+revision: 1                 # 결정 개정 번호. 이 문서의 **결정**이 바뀔 때만 +1(문구·오타 수정은 올리지 않는다).
 ssot: prose                 # 컴포넌트 정의(사람용)가 원본, list 블록은 그 파생 미러
 machine:
   lang: json
