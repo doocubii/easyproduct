@@ -360,6 +360,7 @@ const be = { itf: new Set(), store: new Set(), table: new Set(), mod: new Set(),
 const screenIo = [];        // {id, screen, action, target, doc}
 const unfetchedDisplay = [];  // 보여준다고 했는데 아무 server 동작도 가져오지 않는 값 {screen, doc, vars}
 const noEntryLoad = [];       // 보여주는데 **진입 로드 자체가 없는** 화면 {screen, doc, shown}
+const frameIdDrift = [];      // 프레임 동작 id의 앞 두 마디가 소유 프레임과 다름 {id, frame, want, doc}
 const beBasis = [];         // {itfId, kind, ref, why, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
@@ -378,6 +379,17 @@ for (const doc of loaded) {
     // 안 붙이면 통째로 샌다(실측: 요청서 96건에 세션 조회 없음). 그래서 프레임이 자기 자리를 갖는다.
     for (const fr of (o.frames || [])) {
       const dat = (fr.data || {});
+      // 동작 id의 **앞 두 마디는 소유자를 드러내야 한다**(`IO.order.create.*` → `FEAT.order.create`).
+      // 프레임도 소유자가 `FRAME.<범위>.<이름>`이므로 `IO.<범위>.<이름>.<동작>`이다.
+      // 0.10.0이 `IO.frame.<이름>.*`을 예시해 **범위가 빠졌고**, 사용자 앱과 백오피스가 둘 다 껍데기를
+      // `shell`이라 불러 양쪽이 겹쳤다(실측). 범위가 하나뿐인 세트는 **충돌도 안 나서 조용히 통과**하므로
+      // 중복 검사만으로는 부족하다 — 소유자와 대조해 직접 잡는다.
+      const own = String(fr.id || '').split('.').slice(1, 3).join('.');
+      for (const a of (dat.io || [])) {
+        if (!a.id || !own) continue;
+        const head = String(a.id).split('.').slice(1, 3).join('.');
+        if (head !== own) frameIdDrift.push({ id: a.id, frame: fr.id, want: `IO.${own}.<동작>`, doc: doc.path });
+      }
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: fr.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
@@ -895,6 +907,17 @@ if (screenIo.length) {
     report('        어느 화면 것도 아니라 지금은 **요청서에 한 줄도 안 나갑니다.** index에 `screendesign.frame` 블록을 채우세요.');
     report('     → 껍데기에 서버 동작이 정말 없으면 `frames[].data.io: []`로 명시하세요(생각했음을 남깁니다).');
   }
+}
+
+if (frameIdDrift.length) {
+  report(`  ⚠ 소유 프레임과 어긋난 동작 id ${frameIdDrift.length}건 — **이관 필요**(앞 두 마디가 소속을 드러내야 한다)`);
+  for (const x of frameIdDrift.slice(0, CAP(frameIdDrift.length))) {
+    report(`     · ${x.id} (${x.frame}) → ${x.want}`);
+  }
+  if (!verbose && frameIdDrift.length > 5) report(`     · 외 ${frameIdDrift.length - 5}건 (--verbose로 전부)`);
+  report('     → 0.10.0의 `IO.frame.<이름>.*` 예시에는 **범위가 빠져 있었다.** 사용자 앱과 백오피스가 둘 다');
+  report('        껍데기를 `shell`이라 부르면 양쪽이 같은 id가 되어 요청서·백엔드 basis가 엉뚱한 동작에 붙는다.');
+  report('     → id를 바꾸면 백엔드 계약의 `basis`가 그 id를 가리키던 것이 죽은 링크로 잡힌다 — 함께 고치세요.');
 }
 
 // 화면 문서가 없는 세트(요청서만 넘겨받은 리포 등)에서도 알려야 하므로 위 화면 검사 밖에 둔다.
