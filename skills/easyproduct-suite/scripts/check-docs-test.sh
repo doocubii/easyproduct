@@ -615,5 +615,66 @@ node "$CHECK" "$WORK/unfetched" > "$WORK/out.txt" 2>&1
 expect_out "local 동작이 받아도 서버 조회 요구로 치지 않는다" "아무 동작도 가져오지 않는 데이터 3건"
 
 echo
+echo "[17] 저장하지 않는 일회성 입력 — 적을 자리를 주되 뒷문은 막는다"
+# 검색어는 데이터 모델에 없는 게 정상인데(저장하지 않으므로), sends가 실재 변수만 받아서 적을 데가 없었다.
+# 그 결과 검색 동작이 sends: []로 넘어가 백엔드가 "입력 없는 검색"을 요구로 받았다(실측 결함).
+mkdir -p "$WORK/transient/screens/user/schemas" "$WORK/transient/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/transient/screens/user/schemas/"
+dmsrc="$(find "$HERE/../.." -name "data-model.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$WORK/transient/ssot/schemas/"
+cat > "$WORK/transient/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "law", "label": "법령", "fields": [
+  { "name": "id", "label": "ID", "type": "문자" },
+  { "name": "name", "label": "이름", "type": "문자" } ] }
+```
+MD
+mkscreen() {  # $1 = transientSends 항목
+cat > "$WORK/transient/screens/user/screen-design-user-lawReview.md" <<MD
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+\`\`\`json screendesign.screens
+{ "screens": [ { "id": "FEAT.lawReview.lawSearch", "components": ["UI.x"], "data": {
+  "display": ["law.name"], "bindings": [],
+  "io": [ { "id": "IO.lawReview.lawSearch.search", "action": "검색", "target": "server",
+            "sends": [], "transientSends": [$1], "receives": ["law.id","law.name"] } ] } } ] }
+\`\`\`
+MD
+}
+mkscreen '{ "name": "keyword", "desc": "법령명·조문 검색어" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_no_out "일회성 입력은 데이터 모델 대조를 받지 않는다" "keyword"
+node "$CHECK" "$WORK/transient" --emit-interface-request --scope user --domain lawReview 2>/dev/null > "$WORK/tr-req.md"
+if grep -q "keyword(법령명·조문 검색어)" "$WORK/tr-req.md"; then ok "요청서 표에 일회성 입력이 실린다"; else bad "요청서 표에 없음"; fi
+if grep -q '"transientSends"' "$WORK/tr-req.md"; then ok "요청서 블록에도 실린다(백엔드가 기계로 읽는다)"; else bad "블록에 없음"; fi
+# 뒷문 — 실재 변수를 여기 적어 sends 제약을 우회하려 하면 잡는다
+mkscreen '{ "name": "law.name", "desc": "법령명" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_out "실재 변수를 일회성 입력에 적으면 잡는다" "데이터 모델 실재 변수다"
+expect_out "어디로 옮기라는지 알려준다" "sends"
+# 뜻 없는 이름은 스키마가 막는다
+mkscreen '{ "name": "keyword" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_out "뜻 없는 일회성 입력은 스키마가 막는다" "desc 누락"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
