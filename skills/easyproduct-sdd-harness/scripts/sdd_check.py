@@ -264,6 +264,7 @@ P = {
 }
 
 skipped = []      # 무엇을 안 봤는지 — 리포트 머리말에 반드시 드러낸다
+notes = []        # 위반은 아니지만 **알아야 하는 것**(정책이 세트를 못 따라간 흔적 등)
 violations = []
 
 
@@ -499,6 +500,61 @@ for f in CHANGED:
 # ─────────────────────────────── ⑥ 역결합 ───────────────────────────────
 
 upstream_matcher = make_matcher(P['upstream'].get('globs', []))
+
+
+# easyproduct 세트의 **색인 매니페스트**와 `upstreamDocs.globs`를 대조한다.
+# 정책은 사람이 읽을 수 있어야 하므로 런타임에 매니페스트로 **대체하지 않는다** — 대신 **어긋남을 보고**한다.
+# 실제 사고: 세트가 새 채널(`interface-requests/`)을 얻었는데 글롭에 없어, 그 채널 전체가 ④⑥ 밖이었다.
+MANIFEST_RE = re.compile(r'```json\s+docbundle\.docs\n(.*?)```', re.S)
+
+
+def manifest_gaps():
+    if (P['upstream'].get('docsAdapter') or 'generic') != 'easyproduct':
+        return None
+    out = {}
+    seen_manifest = False
+    for f in [x for x in ALL_FILES if x.endswith('00-index.md')]:
+        m = MANIFEST_RE.search(read_text(f))
+        if not m:
+            continue
+        try:
+            man = json.loads(m.group(1))
+        except Exception:
+            continue
+        if not isinstance(man.get('docs'), list):
+            continue
+        seen_manifest = True
+        base = f[:-len('00-index.md')]
+        for d in man['docs']:
+            if not isinstance(d, dict) or not d.get('path'):
+                continue
+            if d.get('role') not in ('ssot', 'handoff'):
+                continue
+            full = (base + d['path']).replace('\\', '/')
+            if upstream_matcher(full):
+                continue
+            k = d.get('docType') or '(unknown)'
+            out[k] = out.get(k, 0) + 1
+    return out if seen_manifest else None
+
+
+# **등기부에 없는 접두사** 감지. 이 하네스의 가장 조용한 사각이다 — `idPrefixes`에 없는 접두사는
+# ref_pattern이 아예 안 만들어서, 그런 참조는 **죽은 링크로도 안 잡히고 근거로도 안 세어진다.**
+# 상위 문서 세트가 새 네임스페이스를 얻으면(예: easyproduct 0.8.0의 `IO`) 프로젝트가 정책을 고칠 때까지
+# **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고). 오탐 여지가 있어 위반이 아니라 보고다.
+ANCHORISH = re.compile(r'\b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])')
+
+
+def unregistered_prefixes(texts, known):
+    seen = {}
+    known_set = set(known)
+    for t in texts:
+        for m in ANCHORISH.finditer(t):
+            pfx = m.group(1)
+            if pfx in known_set:
+                continue
+            seen[pfx] = seen.get(pfx, 0) + 1
+    return sorted(seen.items(), key=lambda kv: -kv[1])
 upstream_changed = [f for f in CHANGED if upstream_matcher(f) and f not in EXEMPT_ONLY]
 
 # 훅(--changed)에서도 경고로는 본다 — severity는 sev()가 낮춘다.
@@ -752,6 +808,31 @@ else:
     if wildcard_skipped > 0:
         skipped.append(f"⑤ 와일드카드 참조 {wildcard_skipped}건 건너뜀"
                        "(`FEAT.x.*` 같은 계열 표기 — 특정 ID가 아니라 대조 대상 아님)")
+    # 등기부에 없는 접두사 — 위반이 아니라 **보고**다(오탐 여지가 있고, 판단은 사람 몫).
+    _prefixes = P['upstream'].get('anchorRegistry', {}).get('idPrefixes') or []
+    if _prefixes:
+        _texts = []
+        for slug in scoped_slugs:
+            for fname in P['specRefs'].get('scanFiles', ['spec.md', 'plan.md']):
+                path = f"{P['specsDir']}/{slug}/{fname}"
+                if exists(path):
+                    _texts.append(read_text(path))
+        _unreg = unregistered_prefixes(_texts, _prefixes)
+        if _unreg:
+            _head = ' · '.join(f'{p2}({n}건)' for p2, n in _unreg[:6])
+            notes.append(f"⑤ 등기부에 없는 접두사 참조: {_head}"
+                         + (f" 외 {len(_unreg) - 6}종" if len(_unreg) > 6 else ''))
+            notes.append('     → 상위 문서 세트가 새 네임스페이스를 얻었을 수 있다. '
+                         '`upstreamDocs.anchorRegistry.idPrefixes`에 넣으면 검사받는다.')
+            notes.append('     → 지금은 이 참조들이 **죽은 링크로도 안 잡히고 근거로도 안 세어진다**(검사 밖).')
+
+# 매니페스트 대조(easyproduct 어댑터일 때만). 위반이 아니라 **보고** — 정책을 사람이 고치게 한다.
+_gaps = manifest_gaps()
+if _gaps:
+    _total = sum(_gaps.values())
+    _detail = ' · '.join(f'{k} {v}' for k, v in _gaps.items())
+    notes.append(f"④⑥ 매니페스트에 있는데 upstreamDocs.globs가 안 덮는 상위 문서 {_total}건 ({_detail})")
+    notes.append('     → 그 문서들은 상위 변경 감지(⑥)·신선도(④) 밖이다. globs에 그 폴더를 더하세요.')
 
 
 # ─────────────────────────────── ⑦ 리뷰 기록 ───────────────────────────────
@@ -796,7 +877,7 @@ ok = counts['block'] == 0
 if OPTS['json']:
     print(json.dumps({
         'ok': ok, 'mode': OPTS['mode'], 'adapter': P['upstream'].get('docsAdapter', 'generic'),
-        'policyMode': P['mode'], 'skipped': skipped, 'violations': violations, 'counts': counts,
+        'policyMode': P['mode'], 'skipped': skipped, 'notes': notes, 'violations': violations, 'counts': counts,
     }, ensure_ascii=False, indent=2))
 else:
     RULE_LABEL = {
@@ -812,6 +893,8 @@ else:
         print('  mode: warn (브라운필드) — 모든 위반을 경고로 보고하고 종료코드 0')
     for s in skipped:
         print(f"  skipped: {s}")
+    for n in notes:
+        print(f"  {n if n.startswith(' ') else 'note: ' + n}")
     print('')
     for v in violations:
         print(f"{'✗' if v['severity'] == 'block' else '⚠'} [{RULE_LABEL.get(v['rule'], v['rule'])}] {v['target']}")

@@ -335,6 +335,7 @@ for (let qi = 0; qi < queue.length; qi++) {
 // ── 백엔드 등기부 적재 (있을 때만 — 백엔드 문서가 없는 세트에서도 그대로 돈다) ──
 const be = { itf: new Set(), store: new Set(), table: new Set(), mod: new Set(), ext: new Set(), authMode: new Set() };
 const screenIo = [];        // {id, screen, action, target, doc}
+const unfetchedDisplay = [];  // 보여준다고 했는데 아무 server 동작도 가져오지 않는 값 {screen, doc, vars}
 const beBasis = [];         // {itfId, kind, ref, why, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
@@ -351,9 +352,21 @@ for (const doc of loaded) {
     // 화면 동작(io) — 백엔드 요구의 출처
     for (const s of (o.screens || [])) {
       const dat = Array.isArray(s.data) ? {} : (s.data || {});
+      // 보여준다고 선언한 값 중 **어떤 server 동작도 가져오지 않는 것**을 모은다.
+      // `display`는 "보인다", `io[].receives`는 "가져온다"라 뜻이 다르고, 그 차집합이 **빠진 조회 요구**의 신호다.
+      // 화면 진입 로드를 io에 안 적으면 그 화면은 요청서에 한 줄도 안 나가는데, 지금까지 그게 **조용히** 빠졌다.
+      // 상설 검사다(마이그레이션 도구가 아니다) — 새 화면을 쓸 때마다 같은 누락이 반복되기 때문이다.
+      const fetched = new Set();
+      for (const a of (dat.io || [])) {
+        if ((a.target ? String(a.target).split('.')[0] : null) !== 'server') continue;
+        for (const v of (a.receives || [])) { fetched.add(v); fetched.add(String(v).split('.')[0]); }
+      }
+      const unfetched = (dat.display || []).filter((v) => !fetched.has(v) && !fetched.has(String(v).split('.')[0]));
+      if (unfetched.length) unfetchedDisplay.push({ screen: s.id, doc: doc.path, vars: unfetched });
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
-                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [],
+                        ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
+                        receives: a.receives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
     }
@@ -404,6 +417,14 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
       for (const b of (dat.bindings || [])) for (const v of (b.vars || (b.var ? [b.var] : []))) dataRefs.push(v);
       for (const dv of dataRefs) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
+      // `transientSends`는 **저장하지 않는 일회성 입력**이라 등기부 대조를 받지 않는다. 그래서 여기가
+      // `sends` 제약(데이터 모델 실재 변수만)을 우회하는 **뒷문**이 될 수 있다 — 실재 변수를 여기 적었으면 잡는다.
+      for (const a of (dat.io || [])) for (const t of (a.transientSends || [])) {
+        if (t && t.name && dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+          dead++;
+        }
+      }
     }
     // 시나리오: refs 를 kind로 라우팅
     for (const sc of (o.scenarios || [])) for (const r of (sc.refs || [])) {
@@ -636,7 +657,9 @@ if (emitReq) {
     requests: picked.map((x) => ({
       ref: x.id || `${x.screen}#${x.action}`, screen: x.screen, action: x.action,
       ...(x.target ? { target: x.target } : {}), ...(x.ui ? { ui: x.ui } : {}),
-      sends: x.sends || [], receives: x.receives || [],
+      sends: x.sends || [],
+      ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
+      receives: x.receives || [],
       ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
       ...(x.semantics ? { semantics: x.semantics } : {}),
     })),
@@ -659,8 +682,8 @@ if (emitReq) {
       ? `> 전송은 \`${reqTransport}\`를 **희망**합니다(확정 아님 — 백엔드가 정하고, 다르면 사유를 남깁니다). 백엔드가 채울 자리: ${(SLOTS[reqTransport] || []).join(' · ')}`
       : '> 전송 방식은 백엔드가 정합니다.',
     '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
-    '| 동작 | 화면 | 보냄 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|',
-    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
+    '| 동작 | 화면 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|',
+    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
     '',
     ...(() => {
       // **묶기 후보는 범위 전체로 계산한다.** 이 계산의 존재 이유가 "화면(그리고 대개 도메인)을 가로지르는
@@ -720,6 +743,20 @@ if (screenIo.length) {
     } else {
       report(`\n  ✅ 요구 커버리지: server 동작 ${serverIo.length}건 모두 basis에 담김`);
     }
+  }
+  // 보여준다고 했는데 아무도 가져오지 않는 값 — **빠진 조회 요구**의 신호.
+  // 오탐이 있다(정적 문구·앞 화면에서 넘어온 값·화면에서 계산하는 값). 그래서 오류가 아니라 정보 층이고,
+  // 판단은 사람·LLM이 한다 — 묶기 후보와 같은 취급이다. 다만 **조용히 두지는 않는다.**
+  if (unfetchedDisplay.length) {
+    const n = unfetchedDisplay.reduce((a, x) => a + x.vars.length, 0);
+    report(`  ⚠ 보여준다고 했는데 아무 동작도 가져오지 않는 데이터 ${n}건 (화면 ${unfetchedDisplay.length}개) — 조회 요구가 빠졌을 수 있다`);
+    for (const x of unfetchedDisplay.slice(0, 5)) {
+      report(`     · ${x.screen} — ${x.vars.slice(0, 4).join(', ')}${x.vars.length > 4 ? ` … (${x.vars.length}건)` : ''}`);
+    }
+    if (unfetchedDisplay.length > 5) report(`     · 외 화면 ${unfetchedDisplay.length - 5}개`);
+    report('     → 화면 산문의 **"화면에 들어오면 일어나는 일"**을 `io`에 진입 로드로 담으세요(target: server).');
+    report('        빠지면 그 화면은 인터페이스 요청서에 한 줄도 안 나가고, 백엔드는 그 조회가 없는 줄 압니다.');
+    report('     → 정적 문구·앞 화면에서 받은 값·화면에서 계산하는 값이면 그대로 두고, 산문에 어디서 오는지 한 줄 밝히세요.');
   }
   if (untargeted.length) {
     report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);

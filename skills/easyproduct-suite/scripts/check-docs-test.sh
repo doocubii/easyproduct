@@ -575,5 +575,106 @@ node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
 expect_out "요청서의 요구가 화면 동작과 대조된다" "IO.auth.login.gone"
 
 echo
+echo "[16] 보여준다고 했는데 아무도 안 가져오는 데이터 — 빠진 조회 요구를 드러낸다"
+# 화면 진입 로드는 '누르는 것'이 아니라 저작 지침에 자리가 없었고, 그래서 화면이 데이터를 보여준다고
+# 선언해 놓고 아무도 가져오지 않는 상태가 조용히 남았다(실측: 화면 52개 중 15개가 요청서에 0줄).
+mkdir -p "$WORK/unfetched/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/unfetched/screens/user/schemas/"
+cat > "$WORK/unfetched/screens/user/screen-design-user-support.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [
+ { "id": "FEAT.support.inquiry.list", "components": ["UI.x"], "data": {
+   "display": ["inquiry.title","inquiry.status","inquiry.createdAt"], "bindings": [],
+   "io": [ { "action": "문의하기", "target": "client", "sends": [], "receives": [] } ] } },
+ { "id": "FEAT.support.faq", "components": ["UI.x"], "data": {
+   "display": ["faq.question","faq.answer"], "bindings": [],
+   "io": [ { "id": "IO.support.faq.load", "action": "FAQ 가져오기", "target": "server",
+             "sends": [], "receives": ["faq"] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/unfetched" > "$WORK/out.txt" 2>&1
+expect_out "안 가져오는 데이터를 집계한다" "아무 동작도 가져오지 않는 데이터 3건"
+expect_out "어느 화면인지 짚는다" "FEAT.support.inquiry.list"
+expect_out "무엇을 하라는지 알려준다" "진입 로드로 담으세요"
+expect_out "오탐 처리도 알려준다(지어내지 않게)" "정적 문구"
+if grep -qF "· FEAT.support.faq —" "$WORK/out.txt"; then bad "진입 로드가 있는 화면을 잘못 잡음"; else ok "진입 로드가 있으면 잡지 않는다(그룹 단위 receives 인정)"; fi
+# client·local 동작으로는 덮이지 않는다 — 서버에서 오는 것만 '가져온다'로 친다
+sed -i 's/"action": "문의하기", "target": "client", "sends": \[\], "receives": \[\]/"action": "문의하기", "target": "local", "sends": [], "receives": ["inquiry.title","inquiry.status","inquiry.createdAt"]/' \
+  "$WORK/unfetched/screens/user/screen-design-user-support.md"
+node "$CHECK" "$WORK/unfetched" > "$WORK/out.txt" 2>&1
+expect_out "local 동작이 받아도 서버 조회 요구로 치지 않는다" "아무 동작도 가져오지 않는 데이터 3건"
+
+echo
+echo "[17] 저장하지 않는 일회성 입력 — 적을 자리를 주되 뒷문은 막는다"
+# 검색어는 데이터 모델에 없는 게 정상인데(저장하지 않으므로), sends가 실재 변수만 받아서 적을 데가 없었다.
+# 그 결과 검색 동작이 sends: []로 넘어가 백엔드가 "입력 없는 검색"을 요구로 받았다(실측 결함).
+mkdir -p "$WORK/transient/screens/user/schemas" "$WORK/transient/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/transient/screens/user/schemas/"
+dmsrc="$(find "$HERE/../.." -name "data-model.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$WORK/transient/ssot/schemas/"
+cat > "$WORK/transient/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "law", "label": "법령", "fields": [
+  { "name": "id", "label": "ID", "type": "문자" },
+  { "name": "name", "label": "이름", "type": "문자" } ] }
+```
+MD
+mkscreen() {  # $1 = transientSends 항목
+cat > "$WORK/transient/screens/user/screen-design-user-lawReview.md" <<MD
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+\`\`\`json screendesign.screens
+{ "screens": [ { "id": "FEAT.lawReview.lawSearch", "components": ["UI.x"], "data": {
+  "display": ["law.name"], "bindings": [],
+  "io": [ { "id": "IO.lawReview.lawSearch.search", "action": "검색", "target": "server",
+            "sends": [], "transientSends": [$1], "receives": ["law.id","law.name"] } ] } } ] }
+\`\`\`
+MD
+}
+mkscreen '{ "name": "keyword", "desc": "법령명·조문 검색어" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_no_out "일회성 입력은 데이터 모델 대조를 받지 않는다" "keyword"
+node "$CHECK" "$WORK/transient" --emit-interface-request --scope user --domain lawReview 2>/dev/null > "$WORK/tr-req.md"
+if grep -q "keyword(법령명·조문 검색어)" "$WORK/tr-req.md"; then ok "요청서 표에 일회성 입력이 실린다"; else bad "요청서 표에 없음"; fi
+if grep -q '"transientSends"' "$WORK/tr-req.md"; then ok "요청서 블록에도 실린다(백엔드가 기계로 읽는다)"; else bad "블록에 없음"; fi
+# 뒷문 — 실재 변수를 여기 적어 sends 제약을 우회하려 하면 잡는다
+mkscreen '{ "name": "law.name", "desc": "법령명" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_out "실재 변수를 일회성 입력에 적으면 잡는다" "데이터 모델 실재 변수다"
+expect_out "어디로 옮기라는지 알려준다" "sends"
+# 뜻 없는 이름은 스키마가 막는다
+mkscreen '{ "name": "keyword" }'
+node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
+expect_out "뜻 없는 일회성 입력은 스키마가 막는다" "desc 누락"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

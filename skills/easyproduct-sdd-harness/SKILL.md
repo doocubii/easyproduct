@@ -68,10 +68,11 @@ spec-kit 프로젝트에서 **"이 코드가 승인된 spec에서 파생됐는�
 |---|---|---|
 | 1 | **spec-kit이 있나?** (`.specify/`·`constitution.md`·`specs/`의 `NNN-kebab` 슬라이스) | 없으면 **중단**하고 init 안내 |
 | 2 | **스택·프레임워크는?** (매니페스트 + **의존성 스캔**) | `governedGlobs`·주석 문법·allowlist·통합 지점 (`references/stack-adapters.md`) |
-| 3 | **상위 문서 층이 어디에 어떤 형식으로 있나?** (frontmatter `version:`+기계 블록 / 버전 라인·헤딩만 / 표식 없음) | **문서 어댑터**(`easyproduct` vs `generic`)와 `upstreamDocs.globs` |
+| 3 | **상위 문서 층이 어디에 어떤 형식으로 있나?** (frontmatter `version:`+기계 블록 / 버전 라인·헤딩만 / 표식 없음) | **문서 어댑터**(`easyproduct` vs `generic`)와 `upstreamDocs.globs` — **`easyproduct`면 아래 "어댑터가 실제로 채우는 것"을 그대로 채운다** |
 | 4 | **SDD 규범이 실제로 적혀 있나?** (헌법·CLAUDE.md·AGENTS.md 텍스트 확인) | 없거나 얇으면 **보강 권고**를 리포트에(대신 써 주지 않는다) |
 | 5 | **기존 게이트는 어디에?** (`verify`·Makefile·pytest·pre-commit·CI·에디터 훅) | 새 파이프라인을 만들지 말고 **거기에 얹는다** |
 | 6 | **spec-kit 확장이 이미 깔려 있나?** (`.specify/extensions.yml`·`.speckit-ci.yml`·Gates `policy.json`·`<!-- blueprint:` 마커) | **중복 회피** — 겹치는 규칙은 끄고 위임한다 (`references/ecosystem-overlap.md`) |
+| 6-1 | **easyproduct 세트 문서가 있고, 그 점검기(`check-docs`)가 CI에 물려 있나?** (`00-index.md`의 `docbundle.docs` + CI 설정) | 있는데 안 물려 있으면 **함께 걸자고 제안**한다(대신 깔지는 않는다 — suite 자산). 두 점검기의 경계는 `references/ecosystem-overlap.md` 4-1 |
 | 7 | **관장 범위에 사각이 없나?** (어느 glob에도 안 걸리는 소스 파일 수) | glob 확장 또는 `unmatchedNewFiles: warn` |
 | 8 | **이 하네스가 이미 깔려 있나?** (정책 완결성·검사기 버전·배선이 실제로 연결됐나) | 미설치=신규 / 오설정·구버전=갱신 / 정상="할 것 없음" 보고 |
 | 9 | **저장소 루트가 spec-kit 루트와 다른가?** (`.specify/`가 하위 폴더에 있나, 트랙이 여러 개인가) | 다르면 **`references/monorepo.md`를 따른다** — 모든 경로에 트랙 접두, 형제 트랙을 allowlist로 제외, `upstreamDocs.globs`를 내 트랙 근거로 좁힘, `mainBranch`를 트랙 머지 타깃으로. 트랙마다 **정책 하나씩** |
@@ -85,6 +86,23 @@ spec-kit 프로젝트에서 **"이 코드가 승인된 spec에서 파생됐는�
 - Step 0-3의 어댑터·상위 문서 글롭·앵커 추출 규칙을 여기에 박는다.
 - Step 0-6의 중복 판정을 `delegated`·`severity`에 반영한다(예: CI Guard가 있으면 `completeness: "off"`).
 - **브라운필드는 `mode: "warn"`으로 시작**한다(아래 Step 5).
+
+#### `docsAdapter: "easyproduct"`가 실제로 채우는 것
+
+어댑터를 골랐는데 `idPrefixes`가 비어 있으면 **⑤ 근거가 아무것도 못 본다.** 어댑터를 고르면 아래를 채운다.
+
+- **`anchorRegistry.idPrefixes`** — easyproduct 앵커 접두사 등기부를 그대로 넣는다:
+  `["FEAT","DATA","POL","UI","SCN","IO","BEITF","BESTORE","BESCHEMA","BEARCH"]`
+  (정본은 `easyproduct-suite/assets/anchor-prefixes.json`. 세트가 접두사를 늘리면 이 목록도 늘어난다 —
+  **등기부 밖 접두사는 참조인지도 모르는 상태**가 되어 조용히 검사 밖으로 나간다.)
+- **`upstreamDocs.globs`** — 세트의 **색인(`00-index.md`)의 `docbundle.docs` 매니페스트**를 읽어,
+  `role: ssot`·`role: handoff` 문서가 사는 폴더를 글롭으로 넣는다(요청서 같은 인계 채널을 빠뜨리지 않기 위해).
+  기존 글롭(헌법·CLAUDE.md 등)은 **지우지 않고 더한다.**
+- **`anchorRegistry.blockTagField`** — `machine.tag`(기본값 그대로).
+
+> 채운 뒤에도 세트가 자라면 어긋난다. 그래서 검사기가 **매니페스트에 있는데 글롭이 안 덮는 문서**와
+> **등기부에 없는 접두사 참조**를 집계해 보고한다(아래 Step 2). 정책은 **사람이 읽을 수 있어야** 하므로
+> 런타임에 매니페스트로 대체하지 않는다 — 채우는 것은 설치·갱신 때, 어긋남은 매번 보고.
 
 ### Step 2 — 검사기 설치
 
@@ -199,7 +217,7 @@ Step 0-5·0-6에서 찾은 지점에 **얹는다**. 이미 있는 하네스를 �
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.8.3`
+- **버전**: `0.9.2`
 - **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
