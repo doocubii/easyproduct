@@ -40,7 +40,9 @@
 | 인터페이스 계약 |  `ssot/backend/backend-interface.md` | 인터페이스 전부(경로·method·인증·입출력·오류·멱등성) — **인터페이스 계약의 SSOT** |
 
 - 스키마 네 개(`backend-architecture.v1` · `backend-storage.v1` · `backend-schema.v1` · `backend-interface.v1`)를 산출물 옆 `schemas/`에 복사합니다.
-- 인터페이스가 많아지면 데이터 모델과 같은 방식(`machine.includes`)으로 인터페이스 계약을 도메인별로 나누고, 부분 파일은 `apis/` 하위 폴더에 모읍니다 — 위층에 네 산출물의 구분이 남아야 읽힙니다.
+- 인터페이스가 많아지면 데이터 모델과 같은 방식(`machine.includes`)으로 인터페이스 계약을 도메인별로 나누고, 부분 파일은 `interfaces/` 하위 폴더에 모읍니다 — 위층에 네 산출물의 구분이 남아야 읽힙니다.
+  (`apis/`가 아닌 이유: 이 계약은 REST 전용이 아닙니다. 이름은 **관례일 뿐 계약이 아니라서**, 이미 다른
+  이름을 쓰는 프로젝트는 그대로 두면 됩니다 — 부분 파일을 찾는 정본은 `machine.includes`입니다.)
 
 ## 다른 문서와의 관계 (누가 무엇의 SSOT인가)
 
@@ -81,7 +83,7 @@
 
 ## 버전
 
-- easyproduct 세트 `0.10.0`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.10.1`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
 
 ## 라이선스
 [Apache License 2.0](../../LICENSE) — 세트 전체와 동일합니다.
