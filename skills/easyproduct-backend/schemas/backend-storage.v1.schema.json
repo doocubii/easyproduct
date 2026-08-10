@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/doocubii/easyproduct/schemas/backend-storage.v1.schema.json",
+  "title": "백엔드 저장 설계 — 저장소 목록 블록 (payload v1)",
+  "description": "데이터 모델(개념)이 실제로 '어디에 · 어떤 모양으로' 놓이는지의 기계 미러. 사람용 산문이 원본(SSOT)이고 이 블록은 미러다. 데이터의 뜻·필드 구성은 여전히 데이터 모델 문서가 SSOT이며, 이 문서는 배치·키·인덱스·격리·보존만 정한다. 저장소의 '종류'는 설계가 정하고 '제품'(어느 DB 제품을 쓸지)은 확정하지 않는다 — productCandidates 는 후보일 뿐이다.",
+  "type": "object",
+  "required": ["stores"],
+  "additionalProperties": true,
+  "properties": {
+    "stores": {
+      "type": "array",
+      "minItems": 1,
+      "description": "이 시스템이 두는 저장소 전부. 산문에 적은 저장소를 빠짐없이 담는다.",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "purpose", "holds"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^BESTORE\\.[a-z][a-zA-Z0-9]*$",
+            "description": "저장소 anchor. BESTORE.<이름>. 다른 문서·인터페이스가 이 ID 로 참조한다."
+          },
+          "kind": {
+            "enum": ["relational", "document", "key-value", "vector", "object-storage", "search", "message-broker"],
+            "description": "저장소 종류. 제품 이름이 아니라 종류다 — 이 값이 설계 결정이고, 제품은 productCandidates 로만 남긴다."
+          },
+          "purpose": { "type": "string", "description": "이 저장소가 왜 따로 있는지. '무엇을 담나'가 아니라 '왜 다른 저장소로 갈라야 했나'를 적는다(합칠 수 있으면 합치는 게 낫다)." },
+          "productCandidates": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "이 종류를 만족하는 제품 후보(확정 아님). 확정은 구현 단계의 결정이며 이 문서의 범위가 아니다. 후보를 좁힐 근거가 있으면 산문에 적는다."
+          },
+          "durability": {
+            "enum": ["persistent", "ephemeral", "derived"],
+            "description": "이 저장소를 잃으면 어떻게 되나. persistent=잃으면 안 됨(원본) / ephemeral=잃어도 됨(캐시·세션) / derived=원본에서 다시 만들 수 있음(색인·임베딩)."
+          },
+          "isolation": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "여러 테넌트(조직)·계정의 데이터가 한 저장소에 섞일 때 무엇으로 가르나. 테넌트 데이터를 담는 저장소면 반드시 적는다.",
+            "properties": {
+              "strategy": { "enum": ["shared-key", "shared-schema", "separate-schema", "separate-store", "not-applicable"], "description": "격리 방식." },
+              "key": { "type": "string", "description": "격리 기준이 되는 값(예: organization.id). strategy 가 not-applicable 이면 생략." },
+              "desc": { "type": "string", "description": "이 격리가 무엇을 보장하고 무엇은 보장하지 않는지." }
+            }
+          },
+          "holds": {
+            "type": "array",
+            "minItems": 1,
+            "description": "이 저장소가 담는 것들. 컨테이너(테이블·컬렉션·키 패턴·버킷) 단위로 하나씩.",
+            "items": {
+              "type": "object",
+              "required": ["container", "desc"],
+              "additionalProperties": true,
+              "properties": {
+                "container": { "type": "string", "description": "담는 그릇의 이름(테이블명·컬렉션명·키 패턴·버킷 경로)." },
+                "desc": { "type": "string", "description": "이 그릇이 무엇을 담는지(필수 — 이름만 담지 않는다)." },
+                "group": { "type": "string", "description": "대응하는 데이터 모델 그룹 <group>. 있으면 데이터 모델에 실재해야 한다(죽은 링크 점검 대상). 데이터 모델에 없는 것(세션·잠금·큐 메시지 등)이면 생략하고 desc 에 사유를 적는다." },
+                "key": { "type": "string", "description": "기본 키 또는 키 패턴." },
+                "indexes": {
+                  "type": "array",
+                  "description": "이 그릇에 거는 인덱스. 화면·API 의 조회 패턴에서 유도한 것만 적는다(추측으로 깔지 않는다).",
+                  "items": {
+                    "type": "object",
+                    "required": ["fields", "why"],
+                    "additionalProperties": true,
+                    "properties": {
+                      "fields": { "type": "array", "items": { "type": "string" }, "description": "인덱스를 거는 필드(복합이면 순서대로)." },
+                      "unique": { "type": "boolean", "description": "유일성 제약인지." },
+                      "why": { "type": "string", "description": "어느 조회·제약 때문에 필요한지(BEITF.* 나 정책 POL.* 를 근거로 적는다)." }
+                    }
+                  }
+                },
+                "retention": { "type": "string", "description": "언제까지 두고 언제 지우나. 정책에 근거가 있으면 POL.* 를 함께 적는다." },
+                "embedded": { "type": "boolean", "description": "별도 그릇이 아니라 다른 그릇 안에 품는 형태로 두었는가(문서형 저장소에서 흔함). true 면 desc 에 어느 그릇 안인지 적는다." }
+              }
+            }
+          },
+          "notes": { "type": "string", "description": "그 밖의 제약(트랜잭션 경계·일관성 수준·백업·용량 가정 등)." }
+        }
+      }
+    },
+    "unmapped": {
+      "type": "array",
+      "description": "데이터 모델에는 있는데 아직 어느 저장소에도 배치하지 않은 그룹. 비어 있는 것이 정상이며, 남아 있으면 설계가 덜 끝난 것이다.",
+      "items": {
+        "type": "object",
+        "required": ["group", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "group": { "type": "string", "description": "배치하지 않은 데이터 모델 그룹." },
+          "reason": { "type": "string", "description": "왜 아직 배치하지 않았는지(범위 밖·미결 대기 등)." }
+        }
+      }
+    }
+  }
+}

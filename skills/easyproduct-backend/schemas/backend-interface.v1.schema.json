@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/doocubii/easyproduct/schemas/backend-interface.v1.schema.json",
+  "title": "백엔드 인터페이스 계약 — 도메인 하나 블록 (payload v1)",
+  "description": "백엔드가 확정한 인터페이스 계약의 기계 미러(도메인 하나 = 블록 하나). 사람용 산문이 원본(SSOT)이고 이 블록은 미러다. 요구(화면 설계서의 동작·프로젝트 요청서·화면 없는 운영 요구)가 '무엇을 보내고 받아야 하는지'라면, 이 문서는 **전송 방식과 그에 걸맞은 규격·오류 체계·인증 적용을 확정**한다. 프레임워크·언어는 이 계약에 담지 않는다(구현 선택은 계약 밖).",
+  "type": "object",
+  "required": [
+    "domain",
+    "scope",
+    "interfaces"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z][a-zA-Z0-9]*$",
+      "description": "이 블록이 담는 도메인(예: auth·document·billing). 문서 하나에 여러 도메인이면 블록도 여러 개."
+    },
+    "scope": {
+      "enum": [
+        "user",
+        "bo",
+        "internal"
+      ],
+      "description": "이 도메인의 소비자 범위. user=사용자 앱 / bo=관리자 백오피스 / internal=백엔드 내부·외부 시스템(웹훅·배치)만 부르는 것."
+    },
+    "basePath": {
+      "type": "string",
+      "description": "이 도메인 인터페이스들이 공유하는 경로 접두(예: /api/v1/documents). 개별 path 가 절대경로면 생략 가능."
+    },
+    "interfaces": {
+      "type": "array",
+      "minItems": 1,
+      "description": "이 도메인의 인터페이스 전부. 산문에 적은 인터페이스를 빠짐없이 담는다.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "summary",
+          "transport",
+          "auth",
+          "request",
+          "response",
+          "basis"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^BEITF\\.(user|bo|internal)\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*(\\.[a-z][a-zA-Z0-9]*)?$",
+            "description": "인터페이스 anchor. BEITF.<scope>.<도메인>.<이름>[.<verb>]. 한 번 부여하면 바꾸지 않는다 — 다른 문서·코드가 이 ID로 참조한다."
+          },
+          "summary": {
+            "type": "string",
+            "description": "이 인터페이스가 무엇을 하는지 한 줄."
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.method` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "path": {
+            "type": "string",
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.path` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "auth": {
+            "type": "object",
+            "required": [
+              "mode",
+              "desc"
+            ],
+            "additionalProperties": true,
+            "description": "이 인터페이스에 적용되는 인증·인가. mode 는 아키텍처 문서 backend.system 의 authModes[].mode 에 실재해야 한다(죽은 링크 점검 대상).",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "description": "적용 인증 모드 이름. authModes 등기부에 실재해야 한다."
+              },
+              "desc": {
+                "type": "string",
+                "description": "이 인터페이스에서 인증·인가가 무엇을 막고 무엇을 통과시키는지 한 줄."
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "추가로 통과해야 하는 인가 판정(예: 소유자 본인 확인·이용 권한 보유·조직 관리자). 근거 정책이 있으면 POL.* 를 함께 적는다."
+              }
+            }
+          },
+          "request": {
+            "type": "object",
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": true,
+            "description": "받는 입력. 없으면 fields: [] (대칭 유지).",
+            "properties": {
+              "contentType": {
+                "type": "string",
+                "description": "본문 형식(예: application/json·multipart/form-data). 본문이 없으면 생략."
+              },
+              "fields": {
+                "type": "array",
+                "description": "입력 필드 전부. 없으면 [].",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "in",
+                    "type",
+                    "desc"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "필드 이름."
+                    },
+                    "in": {
+                      "enum": [
+                        "path",
+                        "query",
+                        "body",
+                        "header",
+                        "cookie",
+                        "form"
+                      ],
+                      "description": "어디로 실려 오는지."
+                    },
+                    "type": {
+                      "enum": [
+                        "string",
+                        "number",
+                        "integer",
+                        "datetime",
+                        "date",
+                        "boolean",
+                        "list",
+                        "object",
+                        "binary"
+                      ],
+                      "description": "종류."
+                    },
+                    "desc": {
+                      "type": "string",
+                      "description": "이 필드의 뜻(필수 — 이름만 담지 않는다)."
+                    },
+                    "dataModel": {
+                      "type": "string",
+                      "description": "대응 데이터 모델 변수 <group> 또는 <group>.<field>. 있으면 데이터 모델에 실재해야 한다."
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "값이 정해진 경우 허용 값."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": true,
+            "description": "성공 응답의 확정 형태. 봉투(envelope)를 쓰면 fields 는 봉투 안 payload 기준으로 적고 envelope 에 봉투 이름을 적는다. 상태코드는 전송별 규격이라 여기 두지 않는다(REST면 `binding.status`).",
+            "properties": {
+              "successStatus": {
+                "type": "number",
+                "description": "**REST 전용** — 성공 시 상태코드. 전송별 규격이므로 새로 적을 때는 `binding.status`에 담는다(큐·gRPC·GraphQL엔 상태코드가 없다). 옛 문서 호환용으로 남아 있다."
+              },
+              "envelope": {
+                "type": "string",
+                "description": "응답 봉투 규약 이름(아키텍처 문서에서 정의한 것). 봉투가 없으면 생략."
+              },
+              "fields": {
+                "type": "array",
+                "description": "돌려주는 필드 전부. 본문이 없으면(204 등) [].",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "type",
+                    "desc"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "필드 이름(배열이면 '[]' 를 붙여 표시)."
+                    },
+                    "type": {
+                      "enum": [
+                        "string",
+                        "number",
+                        "integer",
+                        "datetime",
+                        "date",
+                        "boolean",
+                        "list",
+                        "object",
+                        "binary"
+                      ],
+                      "description": "종류."
+                    },
+                    "desc": {
+                      "type": "string",
+                      "description": "이 필드의 뜻(필수)."
+                    },
+                    "dataModel": {
+                      "type": "string",
+                      "description": "대응 데이터 모델 변수. 있으면 실재해야 한다."
+                    }
+                  }
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "이 인터페이스가 낼 수 있는 오류. 상태코드만이 아니라 '언제' 나는지를 함께 적는다.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "when"
+                  ],
+                  "additionalProperties": true,
+                  "properties": {
+                    "status": {
+                      "type": "number",
+                      "description": "**REST 전용** — 그 오류의 상태코드. 전송마다 오류를 나르는 방법이 다르므로(gRPC status code · GraphQL errors[] · 큐 DLQ) 전송별 표현은 횡단 규약에서 한 번 정하고, 여기엔 `code`·`when`을 반드시 적는다."
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "오류 코드(아키텍처 문서의 오류 코드 체계를 따른다)."
+                    },
+                    "when": {
+                      "type": "string",
+                      "description": "어떤 상황에서 나는지."
+                    },
+                    "policy": {
+                      "type": "string",
+                      "description": "이 오류가 제품 규칙에서 오면 그 POL.*."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "이 인터페이스가 읽는 저장소 BESTORE.*. 실재해야 한다."
+          },
+          "writes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "이 인터페이스가 쓰는 저장소 BESTORE.*. 실재해야 한다."
+          },
+          "async": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "이 인터페이스가 오래 걸리는 일을 비동기로 넘길 때의 계약. 동기면 생략.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "job",
+                  "stream",
+                  "webhook"
+                ],
+                "description": "비동기 방식."
+              },
+              "desc": {
+                "type": "string",
+                "description": "무엇을 넘기고 결과를 어떻게 받는지."
+              },
+              "statusEndpoint": {
+                "type": "string",
+                "description": "진행·결과를 조회하는 인터페이스 BEITF.*."
+              }
+            }
+          },
+          "idempotency": {
+            "type": "string",
+            "description": "같은 요청이 두 번 와도 안전한가 — 안전하다면 무엇으로 판정하는지(키·자연키). 쓰기 인터페이스면 반드시 적는다."
+          },
+          "notes": {
+            "type": "string",
+            "description": "그 밖에 구현자가 알아야 할 것(근거 문서와 다르게 확정한 이유 등)."
+          },
+          "transport": {
+            "enum": [
+              "rest",
+              "grpc",
+              "graphql",
+              "ws",
+              "queue",
+              "other"
+            ],
+            "description": "이 인터페이스가 오가는 전송 방식. 전송마다 규격의 모양이 달라 binding 에 담는다. 문서 전체가 한 전송이어도 인터페이스마다 적는다(혼합이 흔하다)."
+          },
+          "binding": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "그 전송에 걸맞은 규격. **전송별로 담아야 할 키가 다르다** — rest: {method, path, status} · grpc: {service, rpc, requestMessage, responseMessage} · graphql: {operationType, fieldName} · ws: {channel, event} · queue: {topic, key, deliveryGuarantee}. 비워 두면 '어떻게 부르는지'가 없는 계약이 되므로 최소 1개는 필수다. (조건부 검증은 이 세트 검증기의 범위 밖이라, 전송별 필수 키는 스킬 지침이 규정하고 LLM 층이 본다.)"
+          },
+          "basis": {
+            "type": "array",
+            "minItems": 1,
+            "description": "이 인터페이스가 존재하는 **근거**. 여러 개일 수 있다(여러 화면이 같은 인터페이스를 쓰거나, 화면과 정책이 함께 근거일 때). 비면 '왜 있는지 아무도 모르는 인터페이스'가 되므로 최소 1개는 필수다.",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "ref"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "screen-io",
+                    "api-request",
+                    "ops",
+                    "policy",
+                    "legacy"
+                  ],
+                  "description": "근거의 갈래. screen-io=화면 설계서의 동작(data.io) · api-request=프로젝트가 따로 가진 요청서 문서 · ops=화면 없는 운영 요구(배치·웹훅·정산) · policy=정책서 규칙이 요구하는 일 · legacy=기존 시스템 계약 승계."
+                },
+                "ref": {
+                  "type": "string",
+                  "description": "그 근거를 가리키는 값. screen-io=`IO.<도메인>.<화면>.<동작>`(io의 id, 없으면 `FEAT.<화면>#<동작이름>`) · api-request=그 문서의 요청 id · policy=`POL.*` · ops/legacy=사람이 읽을 이름."
+                },
+                "why": {
+                  "type": "string",
+                  "description": "왜 이 근거가 이 인터페이스를 요구하는지. **등기부가 없는 갈래(ops·legacy)에서는 반드시 적는다** — 안 적으면 '개발자 요구'가 아무 인터페이스나 정당화하는 뒷문이 된다."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

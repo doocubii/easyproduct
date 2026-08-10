@@ -182,17 +182,51 @@ function discover(root) {
 // ── 메인 ──
 const args = process.argv.slice(2);
 const printSnapshot = args.includes('--print-snapshot');
+const emitNeeds = args.includes('--emit-needs');
+const emitReq = args.includes('--emit-interface-request');
+const argVal = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : dflt; };
+const reqTransport = argVal('--transport');
+const reqScope = argVal('--scope');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
   console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
+  console.error('  --emit-needs     : 화면 동작에서 **서버 요구 목록**을 기계 판독 JSON으로 추출(백엔드 설계의 입력)');
+  console.error('  --emit-interface-request [--transport rest|grpc|graphql|ws|queue] [--scope user]');
+  console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
   process.exit(2);
 }
 
 const problems = [];
-const report = (m) => console.log(m);
+// --emit-needs 는 stdout이 **기계 판독 JSON 전용**이어야 하므로 사람용 리포트를 stderr로 보낸다
+// (파이프로 받아 쓰는 쪽이 파싱에 실패하지 않게).
+const report = (m) => (emitNeeds || emitReq ? console.error(m) : console.log(m));
 const { via, docs } = discover(root);
 report(`문서 발견: ${docs.length}개 (${via === 'manifest' ? '매니페스트' : '폴더 스캔'})`);
+
+// 매니페스트로 발견했으면 **폴더와 대조**한다. 색인이 낡아 새 문서가 빠져 있으면 그 문서들은
+// 스키마 검증·참조 점검·파장 전부에서 통째로 빠지는데, 알려주지 않으면 "통과"로 읽힌다(조용한 통과).
+// 색인은 파생 스냅샷이라 낡는 게 정상이므로, 오류가 아니라 "재생성 필요"로 보고한다.
+const unlisted = [];
+if (via === 'manifest') {
+  const listed = new Set(docs.map((d) => d.path));
+  const SKIP_DIR = /(^|\/)(schemas|temp|node_modules|\.git)(\/|$)/;
+  const walkMd = (dir, acc = []) => {
+    for (const e of fs.readdirSync(path.join(root, dir || '.'), { withFileTypes: true })) {
+      const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (SKIP_DIR.test(rel)) continue;
+      if (e.isDirectory()) walkMd(rel, acc);
+      else if (e.name.endsWith('.md') && rel !== '00-index.md' && !listed.has(rel)) acc.push(rel);
+    }
+    return acc;
+  };
+  try { unlisted.push(...walkMd('')); } catch { /* 스캔 실패는 무시 */ }
+  if (unlisted.length) {
+    report(`  ⚠ 매니페스트에 없는 문서 ${unlisted.length}건 — **점검 대상에서 빠졌다**(색인 재생성 필요)`);
+    report(`     ${unlisted.slice(0, 5).join(', ')}${unlisted.length > 5 ? ` 외 ${unlisted.length - 5}건` : ''}`);
+    report('     → 색인(00-index.md)을 다시 만들면 편입된다. `machine.includes`로 딸린 부분 파일은 자동 추적되므로 여기 안 나온다.');
+  }
+}
 
 // 레지스트리(anchor 등기부)
 const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set() };
@@ -285,6 +319,45 @@ for (let qi = 0; qi < queue.length; qi++) {
   }
 }
 
+// ── 백엔드 등기부 적재 (있을 때만 — 백엔드 문서가 없는 세트에서도 그대로 돈다) ──
+const be = { itf: new Set(), store: new Set(), table: new Set(), mod: new Set(), ext: new Set(), authMode: new Set() };
+const screenIo = [];        // {id, screen, action, target, doc}
+const beBasis = [];         // {itfId, kind, ref, why, doc}
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError) continue;
+    for (const i of (o.interfaces || [])) {
+      be.itf.add(i.id);
+      for (const b of (i.basis || [])) beBasis.push({ itfId: i.id, ...b, doc: doc.path });
+    }
+    for (const s of (o.stores || [])) be.store.add(s.id);
+    for (const t of (o.tables || [])) be.table.add(t.id);
+    for (const m of (o.modules || [])) be.mod.add(m.id);
+    for (const x of (o.integrations || [])) be.ext.add(x.id);
+    for (const a of (o.authModes || [])) be.authMode.add(a.mode);
+    // 화면 동작(io) — 백엔드 요구의 출처
+    for (const s of (o.screens || [])) {
+      const dat = Array.isArray(s.data) ? {} : (s.data || {});
+      for (const a of (dat.io || [])) {
+        screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
+                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [],
+                        policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
+      }
+    }
+  }
+}
+
+// 문서별 현재 상태(개정 번호·내용 해시) — 신선도 판정과 요청서의 출처 스냅샷이 함께 쓴다.
+const cur = new Map();   // path → {revision, hash}
+for (const d of allDocs) {
+  try {
+    const text = fs.readFileSync(path.resolve(root, d.path), 'utf8');
+    const fm = parseFrontmatter(text) || {};
+    const rev = fm.revision == null ? null : Number(fm.revision);
+    cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
+  } catch { /* 위에서 이미 보고됨 */ }
+}
+
 // 데이터 참조 해석: <group> 또는 <group>.<field>
 function dataRefOk(ref) {
   const bare = ref.replace(/^DATA\./, '');
@@ -309,6 +382,10 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) if (a.ui) uiRefs.push(a.ui);
       for (const b of (dat.bindings || [])) if (b.ui) uiRefs.push(b.ui);
       for (const c of uiRefs) { if (/^UI\.FEAT\./.test(c)) continue; refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; } }
+      // 동작에 걸린 정책(POL.*) — 산문에 있는 것을 블록이 담았으면 실재 확인까지 받는다.
+      for (const a of (dat.io || [])) for (const pol of (a.policies || [])) {
+        refChecked++; if (!reg.pol.has(pol)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 동작 "${a.action}" 의 정책 ${pol} → policy.rules에 없음`); dead++; }
+      }
       const dataRefs = [...(dat.display || [])];
       for (const a of (dat.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
       for (const b of (dat.bindings || [])) for (const v of (b.vars || (b.var ? [b.var] : []))) dataRefs.push(v);
@@ -326,8 +403,273 @@ for (const doc of loaded) {
     }
   }
 }
+// 같은 io id가 둘이면 그 참조가 어느 동작을 가리키는지 갈린다 — 요청서·백엔드 basis가 조용히 엉뚱한
+// 동작에 붙는다. id는 사람/LLM이 동작 이름에서 지어내는 값이라 실제로 충돌하기 쉽다(도그푸드에서 발생).
+const ioById = new Map();
+{
+  const dupSeen = new Set();
+  for (const x of screenIo) {
+    if (!x.id) continue;
+    if (ioById.has(x.id)) {
+      if (!dupSeen.has(x.id)) {
+        const prev = ioById.get(x.id);
+        report(`  ❌ 중복 동작 id: ${x.id} 가 "${prev.action}"(${prev.doc})와 "${x.action}"(${x.doc}) 양쪽에 있음`);
+        dead++; dupSeen.add(x.id);
+      }
+      continue;
+    }
+    ioById.set(x.id, x);
+  }
+}
+// 인터페이스 요청서: 가리키는 동작·데이터·정책이 실재하나 + 출처가 그 뒤 바뀌지 않았나.
+// 요청서는 파생물이라 낡는 게 정상이고, 낡았으면 **다시 생성**하면 된다 — 그래서 경고다.
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError || !Array.isArray(o.requests)) continue;
+    for (const r of o.requests) {
+      if (r.ref && !r.ref.includes('#')) {
+        refChecked++; if (!ioById.has(r.ref)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+      }
+      for (const v of [...(r.sends || []), ...(r.receives || [])]) {
+        refChecked++; if (!dataRefOk(v)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} 의 데이터 ${v} → 데이터 모델에 없음`); dead++; }
+      }
+      for (const pol of (r.policies || [])) {
+        refChecked++; if (!reg.pol.has(pol)) { report(`  ❌ ${doc.path}: 요구 ${r.ref} 의 정책 ${pol} → policy.rules에 없음`); dead++; }
+      }
+    }
+    for (const f of (o.from || [])) {
+      const c = cur.get(f.path);
+      if (!c) { report(`  ❌ ${doc.path}: 출처 ${f.path} 가 세트에 없음`); dead++; continue; }
+      const revChanged = f.revision != null && c.revision != null && f.revision !== c.revision;
+      if (revChanged || (f.contentHash && f.contentHash !== c.hash)) {
+        report(`  ⚠ ${doc.path} 가 낡았다 — 출처 ${f.path} 가 생성 이후 바뀜(요청서를 다시 생성하세요: --emit-interface-request)`);
+      }
+    }
+  }
+}
+
+// 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
+for (const doc of loaded) {
+  for (const o of doc.blocks) {
+    if (o.__parseError) continue;
+    for (const i of (o.interfaces || [])) {
+      for (const st of [...(i.reads || []), ...(i.writes || [])]) {
+        refChecked++; if (!be.store.has(st)) { report(`  ❌ ${doc.path}: ${i.id} 의 저장소 ${st} → backend.stores에 없음`); dead++; }
+      }
+      const mode = i.auth && i.auth.mode;
+      if (mode && be.authMode.size) { refChecked++; if (!be.authMode.has(mode)) { report(`  ❌ ${doc.path}: ${i.id} 의 auth.mode ${mode} → backend.system의 authModes에 없음`); dead++; } }
+    }
+    for (const s of (o.stores || [])) for (const h of (s.holds || [])) {
+      if (!h.group) continue;
+      refChecked++; if (!dataRefOk(h.group)) { report(`  ❌ ${doc.path}: 저장소 ${s.id} 가 담는 그룹 ${h.group} → 데이터 모델에 없음`); dead++; }
+    }
+  }
+}
+// 근거(basis) — 등기부가 있는 갈래는 실재 확인, 없는 갈래는 사유(why) 필수.
+for (const b of beBasis) {
+  if (b.kind === 'screen-io') {
+    if (!b.ref || b.ref.includes('#')) continue;              // 합성 참조(id 없는 옛 문서)는 대조 불가 — 아래에서 집계
+    refChecked++; if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+  } else if (b.kind === 'policy') {
+    refChecked++; if (!reg.pol.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → policy.rules에 없음`); dead++; }
+  } else if (b.kind === 'ops' || b.kind === 'legacy') {
+    // 등기부가 없는 갈래다 — 사유가 없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
+    if (!b.why || !String(b.why).trim()) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 "${b.ref}"(${b.kind})에 why 없음 — 등기부 없는 갈래는 사유 필수`); dead++; }
+  }
+}
+
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
+
+// 같은 데이터를 여러 화면이 쓰는 것은 정상이다(변수는 참조일 뿐이고, 원본은 데이터 모델 하나다).
+// 다만 **보내고 받는 것이 똑같은 요구가 여러 화면에 흩어져 있으면** 백엔드에서 인터페이스 하나로
+// 묶을 후보다(`basis`가 배열인 이유). **자동으로 묶지 않는다** — 변수가 같아도 다른 일일 수 있고,
+// 달라도 같은 일일 수 있다. 후보만 짚고 판단은 사람/LLM에 남긴다.
+// 완전히 같지 않아도 **한쪽이 다른 쪽에 포함되면** 기존 인터페이스를 그대로 쓸 수 있다
+// (받는 값 5개 중 4개만 쓰는 화면에 새 인터페이스를 만들 이유가 없다). 그 후보를 짚어 준다.
+// 여기서도 **자동으로 합치지 않는다** — 권한·정책·의미 요건이 다르면 묶으면 안 되고, 그 판단은 백엔드 몫이다.
+function subsetCandidates(list) {
+  const key = (x) => ({ s: new Set(x.sends || []), r: new Set(x.receives || []) });
+  const sub = (a, b) => [...a].every((v) => b.has(v));
+  const out = [];
+  for (const small of list) {
+    const ks = key(small);
+    if (ks.r.size === 0 && ks.s.size === 0) continue;          // 빈 요구는 아무 데나 포함돼 노이즈만 낸다
+    for (const big of list) {
+      if (small === big || small.screen === big.screen) continue;
+      const kb = key(big);
+      if (ks.r.size === kb.r.size && ks.s.size === kb.s.size) continue;   // 완전 일치는 sameShape가 본다
+      if (!sub(ks.r, kb.r) || !sub(ks.s, kb.s)) continue;
+      out.push({
+        reuse: big.id || `${big.screen}#${big.action}`,
+        forNeed: small.id || `${small.screen}#${small.action}`,
+        extra: [...kb.r].filter((v) => !ks.r.has(v)),
+      });
+    }
+  }
+  return out;
+}
+
+function sameShapeGroups(list) {
+  const by = new Map();
+  for (const x of list) {
+    const key = JSON.stringify([[...(x.sends || [])].sort(), [...(x.receives || [])].sort()]);
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(x);
+  }
+  return [...by.values()]
+    .filter((g) => g.length > 1 && new Set(g.map((x) => x.screen)).size > 1)
+    .map((g) => ({
+      sends: g[0].sends || [], receives: g[0].receives || [],
+      refs: g.map((x) => x.id || `${x.screen}#${x.action}`),
+      screens: [...new Set(g.map((x) => x.screen))],
+    }));
+}
+
+// ── 서버 요구 목록 추출 (--emit-needs) ──
+// 화면 동작(`data.io`)에는 요구가 이미 **구조화돼** 있다 — 방향(target)·보내고 받는 변수(데이터 모델
+// 실재 변수로 검증됨)·트리거 UI·소속 화면. 그래서 "무엇이 서버에 필요한가"의 목록은 **LLM 판단 없이
+// 기계로 전수 추출**된다. 백엔드 설계는 이걸 입력으로 받으면 빠뜨릴 수가 없다.
+//
+// **파일로 저장하지 않는다.** 이건 언제든 재생성 가능한 읽기 전용 파생물이라, 문서로 굳히면
+// 화면과 이중 기입이 되어 조용히 어긋난다(세트가 `usedIn`을 뺀 것과 같은 이유).
+//
+// 정직한 한계: **의미 요건**(예: "자격 오류 시 어느 쪽이 틀렸는지 특정하지 않는다")과 **동작 단위 정책
+// 링크**는 산문에만 있어 여기 안 담긴다 — 그건 사람/LLM이 화면 산문에서 읽어야 한다.
+if (emitNeeds) {
+  const covered = new Map();
+  for (const b of beBasis) if (b.kind === 'screen-io') {
+    if (!covered.has(b.ref)) covered.set(b.ref, []);
+    covered.get(b.ref).push(b.itfId);
+  }
+  const needs = screenIo
+    .filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server')
+    .map((x) => ({
+      id: x.id, screen: x.screen, action: x.action, target: x.target,
+      ui: x.ui ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
+      policies: x.policies ?? [], semantics: x.semantics ?? null,
+      doc: x.doc, coveredBy: covered.get(x.id) ?? [],
+    }));
+  const untargeted = screenIo.filter((x) => !x.target).length;
+  console.log(JSON.stringify({
+    needs,
+    note: '화면 동작에서 기계 추출한 서버 요구 목록(읽기 전용 파생물 — 파일로 저장하지 말 것).',
+    limits: '`policies`·`semantics`가 비어 있으면 화면 산문에 있는 것을 블록이 안 담은 것일 수 있다(손실 미러) — 그 경우 백엔드가 오류 근거·멱등·정렬을 정할 근거가 없다.',
+    untargeted,
+    sameShape: sameShapeGroups(needs),
+    subsetReuse: subsetCandidates(needs),
+  }, null, 2));
+  process.exit(0);
+}
+
+// ── 인터페이스 요청서 생성 (--emit-interface-request) ──
+// **층 분리를 위한 산출물이다.** 백엔드가 프론트의 화면 설계서를 뒤지는 대신, 프론트가 "우리가 필요한 건
+// 이것"을 파일로 넘긴다. 내용은 화면 동작에서 기계로 뽑으므로 사람이 옮겨 적지 않는다.
+// 이 문서는 SSOT가 아니라 **재생성 가능한 파생물**이고, 출처 스냅샷(`from`)이 있어 낡으면 점검기가 잡는다.
+if (emitReq) {
+  const SLOTS = {
+    rest: ['method', 'path', 'status'], grpc: ['service', 'rpc', 'requestMessage', 'responseMessage'],
+    graphql: ['operationType', 'fieldName'], ws: ['channel', 'event'], queue: ['topic', 'key', 'deliveryGuarantee'],
+  };
+  const picked = screenIo.filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server'
+    && (!reqScope || x.doc.includes(`/${reqScope}/`) || x.doc.includes(`-${reqScope}-`)));
+  const fromDocs = [...new Set(picked.map((x) => x.doc))].sort().map((p) => {
+    const c = cur.get(p) || {};
+    return c.revision == null ? { path: p, contentHash: c.hash } : { path: p, revision: c.revision, contentHash: c.hash };
+  });
+  const block = {
+    generatedAt: new Date().toISOString().slice(0, 10),
+    ...(reqScope ? { scope: reqScope } : {}),
+    ...(reqTransport ? { preferredTransport: reqTransport, bindingSlots: SLOTS[reqTransport] || [] } : {}),
+    from: fromDocs,
+    requests: picked.map((x) => ({
+      ref: x.id || `${x.screen}#${x.action}`, screen: x.screen, action: x.action,
+      ...(x.target ? { target: x.target } : {}), ...(x.ui ? { ui: x.ui } : {}),
+      sends: x.sends || [], receives: x.receives || [],
+      ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
+      ...(x.semantics ? { semantics: x.semantics } : {}),
+    })),
+  };
+  const rel = (p) => p.split('/').map(() => '..').slice(1).join('/') || '.';
+  const out = [
+    '---', 'doc_type: interface-request', 'version: 1', 'ssot: prose', 'machine:', '  lang: json',
+    '  tag: interface.requests', '  item: request-list', '  schema: schemas/interface-request.v1.schema.json',
+    '---', '',
+    `# 인터페이스 요청서${reqScope ? ` — ${reqScope}` : ''} (${block.generatedAt} 생성)`, '',
+    '> **프론트가 백엔드에 넘기는 요구 목록입니다.** 화면 설계서의 동작에서 **기계로 생성**했으니 손으로 고치지 마세요 —',
+    '> 화면을 고치고 다시 생성하면 됩니다. 이 문서는 SSOT가 아니라 파생물이고, 화면과 어긋나면 **화면이 이깁니다.**',
+    reqTransport
+      ? `> 전송은 \`${reqTransport}\`를 **희망**합니다(확정 아님 — 백엔드가 정하고, 다르면 사유를 남깁니다). 백엔드가 채울 자리: ${(SLOTS[reqTransport] || []).join(' · ')}`
+      : '> 전송 방식은 백엔드가 정합니다.',
+    '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
+    '| 동작 | 화면 | 보냄 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|',
+    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
+    '',
+    ...(() => {
+      const g = sameShapeGroups(block.requests);
+      const sub = subsetCandidates(block.requests).slice(0, 20);
+      const lines = [];
+      if (sub.length) {
+        lines.push('## 기존 인터페이스로 덮을 수 있는 후보 (한쪽이 다른 쪽에 포함됨)', '',
+          '> 받는 값이 더 많은 요구를 이미 처리한다면, **적게 쓰는 화면에 새 인터페이스를 만들 필요가 없습니다.**',
+          '> 권한·정책·의미 요건이 다르면 묶으면 안 되니, **판단은 백엔드 몫**입니다.', '',
+          ...sub.map((x) => `- \`${x.forNeed}\` 는 \`${x.reuse}\` 로 덮을 수 있음 (더 오는 값: ${x.extra.join(', ') || '없음'})`), '');
+      }
+      return g.length
+        ? [...lines, '## 하나로 묶을 후보 (보내고 받는 것이 같은 요구)', '',
+           '> 여러 화면이 같은 데이터를 주고받고 있습니다. 백엔드에서 **인터페이스 하나로 묶을 수 있습니다**',
+           '> (`basis`에 여럿을 적으면 됩니다). **판단은 백엔드 몫**입니다 — 변수가 같아도 다른 일일 수 있습니다.', '',
+           ...g.map((x) => `- ${x.refs.map((r) => '`' + r + '`').join(' · ')} — 보냄 ${x.sends.join(', ') || '—'} / 받음 ${x.receives.join(', ') || '—'}`), '']
+        : lines;
+    })(),
+    '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
+  ].join('\n');
+  console.log(out);
+  process.exit(0);
+}
+
+// ── 요구 → 계약 커버리지 (백엔드 문서가 있을 때만) ──
+// io는 서버 통신 전용이 아니다. `target`의 첫 마디로 갈래를 판정하고, server인 것만 대조한다.
+if (screenIo.length) {
+  const kindOf = (t) => (t ? String(t).split('.')[0] : null);
+  const covered = new Set(beBasis.filter((b) => b.kind === 'screen-io').map((b) => b.ref));
+  const serverIo = screenIo.filter((x) => kindOf(x.target) === 'server');
+  const untargeted = screenIo.filter((x) => !x.target);
+  const withOp = screenIo.filter((x) => x.op);
+  const quals = new Map();
+  for (const x of screenIo) {
+    if (!x.target || !x.target.includes('.')) continue;
+    quals.set(x.target, (quals.get(x.target) || 0) + 1);
+  }
+  if (be.itf.size) {
+    const missed = serverIo.filter((x) => !(x.id && covered.has(x.id)) && !covered.has(`FEAT.${x.screen}#${x.action}`));
+    if (missed.length) {
+      report(`\n  ⚠ 덮이지 않은 요구 ${missed.length}건 — 서버와 주고받는 동작인데 어느 인터페이스의 basis에도 없음`);
+      for (const m of missed.slice(0, 5)) report(`     · ${m.id || `${m.screen}#${m.action}`} (${m.doc})`);
+      if (missed.length > 5) report(`     · 외 ${missed.length - 5}건`);
+    } else {
+      report(`\n  ✅ 요구 커버리지: server 동작 ${serverIo.length}건 모두 basis에 담김`);
+    }
+  }
+  if (untargeted.length) {
+    report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);
+    report('     → 없으면 백엔드가 로컬 저장까지 서버 인터페이스로 잘못 도출한다. 화면 설계 스킬의 버전업(gap-fill)으로 채우세요.');
+  }
+  // 정책·의미 요건이 하나도 없는 서버 동작은 **화면 산문에 있는데 블록이 안 담았을** 수 있다(손실 미러).
+  // 정말 없을 수도 있으므로 오류가 아니라 정보로 알린다 — 백엔드가 오류 근거·멱등을 정할 재료가 그만큼 없다.
+  const bare = serverIo.filter((x) => !(x.policies || []).length && !x.semantics);
+  if (bare.length) {
+    report(`  · 정책·행동 규약이 비어 있는 서버 동작 ${bare.length}건 — 화면 산문에 있는데 안 담긴 것인지 확인하세요`);
+    report('     (없으면 그대로 두면 된다. 있는데 안 담기면 백엔드가 오류 근거·멱등·정렬을 정할 재료가 없다)');
+  }
+  if (withOp.length) {
+    report(`  ⚠ 폐기된 \`data.io[].op\` ${withOp.length}건 — **이관 필요**(백엔드 인터페이스 계약의 basis로 옮기고 비우세요)`);
+  }
+  if (quals.size) {
+    report(`  · target 한정자: ${[...quals.entries()].map(([k, v]) => `${k} ${v}건`).join(' · ')}`);
+    report('     (한정자 등기부는 아직 없다 — 표기가 갈렸으면 통일하세요)');
+  }
+}
 
 // ── 3차: 파장·신선도 (상위 결정이 바뀌었는데 하류가 안 따라갔나) ──
 // 죽은 링크가 "가리킨 것이 실재하나"라면, 이 검사는 **"바뀐 것을 따라갔나"**를 본다.
@@ -373,22 +715,31 @@ report('\n[3] 파장 · 신선도');
     const baseline = new Map();
     if (latest) for (const s of (latest.snap.sources || [])) baseline.set(s.path, s);
 
-    const cur = new Map();   // path → {revision, hash}
-    for (const d of allDocs) {
-      const abs = path.resolve(root, d.path);
-      try {
-        const text = fs.readFileSync(abs, 'utf8');
-        const fm = parseFrontmatter(text) || {};
-        const rev = fm.revision == null ? null : Number(fm.revision);
-        cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
-      } catch { /* 위에서 이미 보고됨 */ }
-    }
 
     if (printSnapshot) {
       // 리뷰 산출물을 쓸 때 붙일 sources 스냅샷을 그대로 출력한다(사람이 해시를 손으로 만들지 않게).
       const snap = [...cur.entries()].map(([p, v]) => (v.revision == null ? { path: p, contentHash: v.hash } : { path: p, revision: v.revision, contentHash: v.hash }));
       report('  스냅샷(리뷰 산출물의 sources에 붙여 넣으세요):');
       report(JSON.stringify(snap, null, 2).split('\n').map(l => '    ' + l).join('\n'));
+    }
+
+    // 지도에 없는 문서 종류는 상류로도 하류로도 안 잡힌다 — **조용히 파장 대상 밖**이 된다.
+    // 프로젝트가 세트 표준 밖의 문서를 갖는 건 정상이지만(요청서·오픈이슈 등), 그 사실이 안 보이면
+    // "이 문서는 파장을 안 탄다"를 아무도 모른 채 상류가 바뀌어도 따라가지 않는다.
+    {
+      const known = new Set(Object.keys(mapDoc.derivesFrom));
+      for (const ups of Object.values(mapDoc.derivesFrom)) for (const u of ups) known.add(u);
+      const unknown = new Map();
+      for (const d of allDocs) {
+        if (known.has(d.docType) || overrideOf.has(d.path)) continue;
+        unknown.set(d.docType, (unknown.get(d.docType) || 0) + 1);
+      }
+      if (unknown.size) {
+        report(`  ⚠ 파장 지도에 없는 문서 종류 ${unknown.size}종 — 이 문서들은 **파장 대상 밖**이다`);
+        report(`     ${[...unknown.entries()].map(([t, c]) => `${t} ${c}건`).join(' · ')}`);
+        report('     → 프로젝트 고유 문서면 매니페스트 항목에 `derivesFrom`(선택)으로 상류를 적어 주면 편입된다.');
+        report('       세트 표준 문서인데 빠진 것이면 파장 지도(스킬 자산)를 고쳐야 한다.');
+      }
     }
 
     // 옛 버전으로 만든 세트를 알아보고 **무엇을 해야 하는지** 알려 준다.
