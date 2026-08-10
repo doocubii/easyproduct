@@ -575,5 +575,45 @@ node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
 expect_out "요청서의 요구가 화면 동작과 대조된다" "IO.auth.login.gone"
 
 echo
+echo "[16] 보여준다고 했는데 아무도 안 가져오는 데이터 — 빠진 조회 요구를 드러낸다"
+# 화면 진입 로드는 '누르는 것'이 아니라 저작 지침에 자리가 없었고, 그래서 화면이 데이터를 보여준다고
+# 선언해 놓고 아무도 가져오지 않는 상태가 조용히 남았다(실측: 화면 52개 중 15개가 요청서에 0줄).
+mkdir -p "$WORK/unfetched/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/unfetched/screens/user/schemas/"
+cat > "$WORK/unfetched/screens/user/screen-design-user-support.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [
+ { "id": "FEAT.support.inquiry.list", "components": ["UI.x"], "data": {
+   "display": ["inquiry.title","inquiry.status","inquiry.createdAt"], "bindings": [],
+   "io": [ { "action": "문의하기", "target": "client", "sends": [], "receives": [] } ] } },
+ { "id": "FEAT.support.faq", "components": ["UI.x"], "data": {
+   "display": ["faq.question","faq.answer"], "bindings": [],
+   "io": [ { "id": "IO.support.faq.load", "action": "FAQ 가져오기", "target": "server",
+             "sends": [], "receives": ["faq"] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/unfetched" > "$WORK/out.txt" 2>&1
+expect_out "안 가져오는 데이터를 집계한다" "아무 동작도 가져오지 않는 데이터 3건"
+expect_out "어느 화면인지 짚는다" "FEAT.support.inquiry.list"
+expect_out "무엇을 하라는지 알려준다" "진입 로드로 담으세요"
+expect_out "오탐 처리도 알려준다(지어내지 않게)" "정적 문구"
+if grep -qF "· FEAT.support.faq —" "$WORK/out.txt"; then bad "진입 로드가 있는 화면을 잘못 잡음"; else ok "진입 로드가 있으면 잡지 않는다(그룹 단위 receives 인정)"; fi
+# client·local 동작으로는 덮이지 않는다 — 서버에서 오는 것만 '가져온다'로 친다
+sed -i 's/"action": "문의하기", "target": "client", "sends": \[\], "receives": \[\]/"action": "문의하기", "target": "local", "sends": [], "receives": ["inquiry.title","inquiry.status","inquiry.createdAt"]/' \
+  "$WORK/unfetched/screens/user/screen-design-user-support.md"
+node "$CHECK" "$WORK/unfetched" > "$WORK/out.txt" 2>&1
+expect_out "local 동작이 받아도 서버 조회 요구로 치지 않는다" "아무 동작도 가져오지 않는 데이터 3건"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
