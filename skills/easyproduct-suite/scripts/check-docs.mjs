@@ -485,6 +485,31 @@ if (dead) problems.push('deadlink');
 // 다만 **보내고 받는 것이 똑같은 요구가 여러 화면에 흩어져 있으면** 백엔드에서 인터페이스 하나로
 // 묶을 후보다(`basis`가 배열인 이유). **자동으로 묶지 않는다** — 변수가 같아도 다른 일일 수 있고,
 // 달라도 같은 일일 수 있다. 후보만 짚고 판단은 사람/LLM에 남긴다.
+// 완전히 같지 않아도 **한쪽이 다른 쪽에 포함되면** 기존 인터페이스를 그대로 쓸 수 있다
+// (받는 값 5개 중 4개만 쓰는 화면에 새 인터페이스를 만들 이유가 없다). 그 후보를 짚어 준다.
+// 여기서도 **자동으로 합치지 않는다** — 권한·정책·의미 요건이 다르면 묶으면 안 되고, 그 판단은 백엔드 몫이다.
+function subsetCandidates(list) {
+  const key = (x) => ({ s: new Set(x.sends || []), r: new Set(x.receives || []) });
+  const sub = (a, b) => [...a].every((v) => b.has(v));
+  const out = [];
+  for (const small of list) {
+    const ks = key(small);
+    if (ks.r.size === 0 && ks.s.size === 0) continue;          // 빈 요구는 아무 데나 포함돼 노이즈만 낸다
+    for (const big of list) {
+      if (small === big || small.screen === big.screen) continue;
+      const kb = key(big);
+      if (ks.r.size === kb.r.size && ks.s.size === kb.s.size) continue;   // 완전 일치는 sameShape가 본다
+      if (!sub(ks.r, kb.r) || !sub(ks.s, kb.s)) continue;
+      out.push({
+        reuse: big.id || `${big.screen}#${big.action}`,
+        forNeed: small.id || `${small.screen}#${small.action}`,
+        extra: [...kb.r].filter((v) => !ks.r.has(v)),
+      });
+    }
+  }
+  return out;
+}
+
 function sameShapeGroups(list) {
   const by = new Map();
   for (const x of list) {
@@ -532,6 +557,7 @@ if (emitNeeds) {
     limits: '`policies`·`semantics`가 비어 있으면 화면 산문에 있는 것을 블록이 안 담은 것일 수 있다(손실 미러) — 그 경우 백엔드가 오류 근거·멱등·정렬을 정할 근거가 없다.',
     untargeted,
     sameShape: sameShapeGroups(needs),
+    subsetReuse: subsetCandidates(needs),
   }, null, 2));
   process.exit(0);
 }
@@ -581,12 +607,20 @@ if (emitReq) {
     '',
     ...(() => {
       const g = sameShapeGroups(block.requests);
+      const sub = subsetCandidates(block.requests).slice(0, 20);
+      const lines = [];
+      if (sub.length) {
+        lines.push('## 기존 인터페이스로 덮을 수 있는 후보 (한쪽이 다른 쪽에 포함됨)', '',
+          '> 받는 값이 더 많은 요구를 이미 처리한다면, **적게 쓰는 화면에 새 인터페이스를 만들 필요가 없습니다.**',
+          '> 권한·정책·의미 요건이 다르면 묶으면 안 되니, **판단은 백엔드 몫**입니다.', '',
+          ...sub.map((x) => `- \`${x.forNeed}\` 는 \`${x.reuse}\` 로 덮을 수 있음 (더 오는 값: ${x.extra.join(', ') || '없음'})`), '');
+      }
       return g.length
-        ? ['## 하나로 묶을 후보 (보내고 받는 것이 같은 요구)', '',
+        ? [...lines, '## 하나로 묶을 후보 (보내고 받는 것이 같은 요구)', '',
            '> 여러 화면이 같은 데이터를 주고받고 있습니다. 백엔드에서 **인터페이스 하나로 묶을 수 있습니다**',
            '> (`basis`에 여럿을 적으면 됩니다). **판단은 백엔드 몫**입니다 — 변수가 같아도 다른 일일 수 있습니다.', '',
            ...g.map((x) => `- ${x.refs.map((r) => '`' + r + '`').join(' · ')} — 보냄 ${x.sends.join(', ') || '—'} / 받음 ${x.receives.join(', ') || '—'}`), '']
-        : [];
+        : lines;
     })(),
     '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
   ].join('\n');

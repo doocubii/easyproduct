@@ -435,5 +435,38 @@ if grep -q "IO.auth.login.submit" "$WORK/same-req.md" && grep -q "IO.home.main.l
 if grep -q "판단은 백엔드 몫" "$WORK/same-req.md"; then ok "판단 주체를 밝힌다"; else bad "판단 주체 문구 없음"; fi
 
 echo
+echo "[13] 부분집합 요구 — 기존 인터페이스로 덮을 후보를 짚는다"
+# 받는 값 5개 중 4개만 쓰는 화면에 새 인터페이스를 만들 이유가 없다. 다만 남는 값이 함께 가므로
+# 자동으로 묶지 않고 후보만 짚는다(권한·정책·성격이 다르면 묶으면 안 된다).
+mkdir -p "$WORK/subset/screens/user" "$WORK/subset/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/subset/schemas/"
+cat > "$WORK/subset/screens/user/s.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: ../../schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [
+ { "id": "FEAT.order.detail", "feat": "FEAT.order.detail", "components": ["UI.x"],
+   "data": { "display": [], "bindings": [], "io": [
+     { "id": "IO.order.detail.load", "action": "상세 보기", "target": "server", "sends": ["order.id"],
+       "receives": ["order.status","order.amount","order.pickupSlot","order.itemNote","order.createdAt"] } ] } },
+ { "id": "FEAT.order.list", "feat": "FEAT.order.list", "components": ["UI.x"],
+   "data": { "display": [], "bindings": [], "io": [
+     { "id": "IO.order.list.row", "action": "목록 한 줄", "target": "server", "sends": ["order.id"],
+       "receives": ["order.status","order.amount","order.pickupSlot","order.createdAt"] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/subset" --emit-interface-request > "$WORK/subset-req.md" 2>/dev/null
+if grep -q "덮을 수 있는 후보" "$WORK/subset-req.md"; then ok "부분집합 재사용 후보를 짚는다"; else bad "부분집합 후보를 안 짚음"; fi
+if grep -q "order.itemNote" "$WORK/subset-req.md"; then ok "더 오는 값이 무엇인지 알려준다"; else bad "더 오는 값 표시 없음"; fi
+if grep -q "판단은 백엔드 몫" "$WORK/subset-req.md"; then ok "자동으로 묶지 않음을 밝힌다"; else bad "판단 주체 문구 없음"; fi
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
