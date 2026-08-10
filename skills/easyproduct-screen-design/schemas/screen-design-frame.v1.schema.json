@@ -4,7 +4,9 @@
   "title": "공통 프레임 (screendesign.frame)",
   "description": "화면들을 **감싸는 껍데기**(백오피스 LNB·상단바 / 사용자 앱 GNB·푸터)가 주고받는 것. 화면 설계서 index 문서의 '공통 UI 정의' 산문을 미러한다. 그 절은 지금까지 **모양**(배치·스티키·접힘·상태 표준)만 담았고 **동작**은 담을 자리가 없었다 — 그래서 세션 조회·로그아웃 같은 요구가 어느 화면의 `data.io`에도 속하지 못하고 인터페이스 요청서에서 통째로 샜다(실측: 요청서 96건에 세션 조회 없음, 로그아웃은 마이페이지 화면에 억지로 귀속). 프레임은 **목적지가 아니라 용기**다 — `FEAT`처럼 사용자가 가는 곳이 아니라, 가 있는 동안 늘 거기 있는 것이다. 그래서 `FEAT`을 주지 않고 별도 접두사 `FRAME.*`을 쓴다.",
   "type": "object",
-  "required": ["frames"],
+  "required": [
+    "frames"
+  ],
   "additionalProperties": false,
   "properties": {
     "scope": {
@@ -17,7 +19,12 @@
       "description": "이 범위의 공통 프레임들. 보통 하나지만, 인증 전/후로 껍데기가 갈리면 둘 이상이다(예: `shell` · `authShell`).",
       "items": {
         "type": "object",
-        "required": ["id", "label", "components", "data"],
+        "required": [
+          "id",
+          "label",
+          "components",
+          "data"
+        ],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -32,7 +39,9 @@
           "components": {
             "type": "array",
             "minItems": 1,
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "이 껍데기를 이루는 `UI.*` 컴포넌트 전부(산문 '공통 UI 정의'에 등장한 것). **최소 1개** — id만 담은 엔트리는 산문 헤딩을 중복한 빈 껍데기라 무의미하다."
           },
           "appliesTo": {
@@ -43,30 +52,41 @@
             "properties": {
               "except": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "이 껍데기가 **걸리지 않는** 화면(`FEAT.*`). 예: 로그인·비밀번호 재설정."
               },
               "only": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "이 껍데기가 **걸리는 화면만** 나열(`FEAT.*`). 프레임이 둘 이상일 때 쓴다. `except`와 함께 쓰지 않는다."
               }
             }
           },
           "data": {
             "type": "object",
-            "required": ["display", "io"],
+            "required": [
+              "display",
+              "io"
+            ],
             "additionalProperties": false,
             "description": "껍데기의 데이터 축. 화면 엔트리와 **같은 모양**이다 — 다른 것은 소속이 화면이 아니라 프레임이라는 점뿐.",
             "properties": {
               "display": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "껍데기가 **보여주는** 데이터 변수(예: 상단바의 `operator.name`·`operator.role`). 데이터 모델 실재 변수만. 없으면 `[]` 명시(`io`와 대칭)."
               },
               "io": {
                 "type": "array",
-                "items": { "$ref": "#/$defs/io" },
+                "items": {
+                  "$ref": "#/$defs/io"
+                },
                 "description": "껍데기에서 **일어나는 일**. 세션 조회(진입 가드) · 로그아웃 · 워크스페이스 전환 · 전역 검색 · 알림. **여기 없으면 요청서에 안 나가고 백엔드는 그 요구가 없는 줄 안다.** 없으면 `[]` 명시."
               }
             }
@@ -78,41 +98,74 @@
   "$defs": {
     "io": {
       "type": "object",
-      "required": ["action", "sends", "receives"],
+      "required": [
+        "action",
+        "sends",
+        "receives"
+      ],
       "additionalProperties": false,
       "description": "화면의 `data.io[]`와 같은 계약이다. 다만 이 동작은 **한 화면이 아니라 걸리는 모든 화면에서** 일어난다 — 그 사실을 `semantics`에 밝힌다(백엔드가 호출 빈도·캐시·세션 저장소를 정하는 근거다).",
       "properties": {
-        "action": { "type": "string", "description": "동작 이름(예: '세션 운영자 조회' · '로그아웃')." },
+        "action": {
+          "type": "string",
+          "description": "동작 이름(예: '세션 운영자 조회' · '로그아웃')."
+        },
         "id": {
           "type": "string",
           "pattern": "^IO\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*$",
-          "description": "동작 anchor `IO.<도메인>.<이름>.<동작>`. 프레임 동작은 도메인 자리에 `frame`을 쓴다(예: `IO.frame.shell.session`). 요청서·백엔드 계약이 이걸 참조한다."
+          "description": "동작 anchor `IO.<범위>.<프레임이름>.<동작>` (예: `IO.backoffice.shell.session`). **소속은 앞 두 마디가 드러낸다** — 소유 프레임 `FRAME.<범위>.<이름>`의 두 마디를 그대로 쓴다(화면 동작이 `IO.order.create.*` → `FEAT.order.create`인 것과 같은 규칙). **`IO.frame.*`처럼 범위를 빼지 않는다** — 사용자 앱과 백오피스가 둘 다 껍데기를 `shell`이라 부르므로 `IO.frame.shell.session`이 양쪽에서 겹쳐 **중복 동작 id**가 된다(실측 결함). 한 번 부여하면 바꾸지 않는다."
         },
         "target": {
           "type": "string",
           "pattern": "^(server|local|client)(\\.[A-Za-z][A-Za-z0-9_-]*)*$",
           "description": "누구와 주고받는지. 첫 마디가 갈래를 정한다. **세션 판정이 로컬 토큰만 보는 방식이면 `local`이고, 그러면 서버 요구가 아니다** — 요청서에도 안 나간다."
         },
-        "ui": { "type": "string", "description": "트리거 컴포넌트(`UI.*`). **진입 가드처럼 누르는 것이 아니면 비운다.**" },
-        "sends": { "type": "array", "items": { "type": "string" }, "description": "보내는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`." },
+        "ui": {
+          "type": "string",
+          "description": "트리거 컴포넌트(`UI.*`). **진입 가드처럼 누르는 것이 아니면 비운다.**"
+        },
+        "sends": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "보내는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`."
+        },
         "transientSends": {
           "type": "array",
           "minItems": 1,
           "description": "보내지만 **저장하지 않는 일회성 입력**(검색어 등). 등기부 대조를 받지 않으므로 뜻을 함께 담는다. 없으면 이 필드를 두지 않는다.",
           "items": {
             "type": "object",
-            "required": ["name", "desc"],
+            "required": [
+              "name",
+              "desc"
+            ],
             "additionalProperties": false,
             "properties": {
-              "name": { "type": "string", "description": "입력 이름." },
-              "desc": { "type": "string", "description": "이 입력이 무엇인지 한 줄. **필수**." }
+              "name": {
+                "type": "string",
+                "description": "입력 이름."
+              },
+              "desc": {
+                "type": "string",
+                "description": "이 입력이 무엇인지 한 줄. **필수**."
+              }
             }
           }
         },
-        "receives": { "type": "array", "items": { "type": "string" }, "description": "받는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`." },
+        "receives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "받는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`."
+        },
         "policies": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "이 동작에 걸리는 제품 규칙(`POL.*`). **가드는 여기를 채운다** — '미인증이면 막는다'는 결정은 정책서 것이고, 프레임은 그걸 참조만 한다(중복 서술 금지)."
         },
         "semantics": {
