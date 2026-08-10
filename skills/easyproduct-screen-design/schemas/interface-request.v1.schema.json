@@ -94,6 +94,35 @@
             "type": "string",
             "description": "그 동작이 사는 화면 ID(`FEAT.*`)."
           },
+          "frame": {
+            "type": "string",
+            "pattern": "^FRAME\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*$",
+            "description": "이 요구가 **공통 프레임**(화면들을 감싸는 껍데기)의 것임을 밝힌다. 있으면 이 동작은 한 화면이 아니라 **그 껍데기가 걸리는 모든 화면에서** 일어난다 — 백엔드가 개별 조회로 오해하면 호출 빈도·캐시·세션 저장소를 잘못 잡는다(화면 20개짜리 백오피스에서 세션 조회는 가장 많이 불리는 인터페이스다). 화면에서 나온 요구에는 이 키가 없다."
+          },
+          "appliesTo": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "description": "프레임 요구가 **걸리지 않는/걸리는 화면**. 화면 설계서의 `frames[].appliesTo`에서 그대로 온다. 예외가 없으면 `null`이다. 대개 로그인 화면이 빠진다 — 안 빼면 '로그인하려면 세션이 있어야 한다'는 순환이 된다.",
+            "properties": {
+              "except": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "걸리지 않는 화면(`FEAT.*`)."
+              },
+              "only": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "걸리는 화면만 나열(`FEAT.*`)."
+              }
+            }
+          },
           "action": {
             "type": "string",
             "description": "동작 이름(사람이 읽는 말). 백엔드가 인터페이스 `summary`를 지을 때 쓴다."
@@ -112,24 +141,6 @@
               "type": "string"
             },
             "description": "보내는 데이터 변수(`<group>[.<field>]`) — 데이터 모델 실재 변수. 없으면 []."
-          },
-          "receives": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "받는 데이터 변수 — 데이터 모델 실재 변수. 없으면 []."
-          },
-          "policies": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "이 동작에 걸리는 제품 규칙(`POL.*`). 백엔드가 오류의 `policy`를 채우는 근거."
-          },
-          "semantics": {
-            "type": "string",
-            "description": "`sends`/`receives`만으로는 안 나오는 행동 규약(멱등·오류 구분·정렬·동기 여부). 백엔드 계약의 `idempotency`·`errors[].when`·`async`를 채우는 근거다. 비어 있으면 화면 산문에 없거나, 있는데 블록이 안 담은 것(손실 미러)이다."
           },
           "transientSends": {
             "type": "array",
@@ -153,6 +164,24 @@
                 }
               }
             }
+          },
+          "receives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "받는 데이터 변수 — 데이터 모델 실재 변수. 없으면 []."
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "이 동작에 걸리는 제품 규칙(`POL.*`). 백엔드가 오류의 `policy`를 채우는 근거."
+          },
+          "semantics": {
+            "type": "string",
+            "description": "`sends`/`receives`만으로는 안 나오는 행동 규약(멱등·오류 구분·정렬·동기 여부). 백엔드 계약의 `idempotency`·`errors[].when`·`async`를 채우는 근거다. 비어 있으면 화면 산문에 없거나, 있는데 블록이 안 담은 것(손실 미러)이다."
           }
         }
       }
