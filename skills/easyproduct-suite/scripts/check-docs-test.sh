@@ -546,5 +546,34 @@ expect_out "옛 배치(통짜) 요청서를 집계해 알려준다" "옛 배치"
 expect_out "무엇을 하라는지 알려준다" "도메인별로 다시 뽑고"
 
 echo
+echo "[15] 왕복 — 규약 경로에 둔 생성물이 실제로 점검을 받는가"
+# 0.8.2에서 요청서를 두 단계 아래로 옮기면서 스키마 경로가 어긋났고, 그 결과 **블록이 검사에서 통째로
+# 빠졌다**(경고 한 줄 뒤의 조용한 통과). 생성 케이스와 감지 케이스를 따로 봤을 뿐 **생성물을 규약 경로에
+# 놓고 다시 점검하는 왕복**을 안 걸어서 못 잡았다. 이 테스트가 그 구멍이다.
+mkdir -p "$WORK/split/interface-requests/user/schemas"
+[ -n "$irsrc" ] && cp "$irsrc" "$WORK/split/interface-requests/user/schemas/"
+rm -f "$WORK/split/interface-requests/interface-request-user.md"    # 앞 케이스의 옛 배치 파일 치움
+for d in $(node "$CHECK" "$WORK/split" --emit-interface-request --scope user --list-domains 2>/dev/null); do
+  node "$CHECK" "$WORK/split" --emit-interface-request --scope user --domain "$d" --transport rest 2>/dev/null \
+    > "$WORK/split/interface-requests/user/interface-request-user-$d.md"
+done
+node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
+expect_no_out "규약 경로의 생성물이 자기 스키마를 읽는다" "스키마 로드 실패"
+expect_no_out "생성물에 revision이 있다(업그레이드 대상이 아니다)" "revision"
+expect_no_out "갓 생성한 요청서는 낡지 않았다" "가 낡았다"
+expect_no_out "갓 생성한 요청서는 옛 배치가 아니다" "옛 배치"
+# 스키마 사본을 치우면 다시 침묵하는가 — "빠뜨리면 조용히 샌다"는 주장 자체를 고정한다
+mv "$WORK/split/interface-requests/user/schemas/interface-request.v1.schema.json" "$WORK/ir.bak"
+node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
+expect_out "사본이 없으면 스키마 로드 실패를 낸다" "스키마 로드 실패"
+expect_out "그래서 무엇이 침묵하는지 밝힌다(조용한 통과 금지)" "이후 검사에서 전부 제외된다"
+expect_out "어디에 두라고 알려준다" "문서 옆"
+mv "$WORK/ir.bak" "$WORK/split/interface-requests/user/schemas/interface-request.v1.schema.json"
+# 요구가 실제로 대조되는가 — 로드가 되면 죽은 링크 검사가 돈다
+sed -i 's/"ref": "IO.auth.login.submit"/"ref": "IO.auth.login.gone"/' "$WORK/split/interface-requests/user/interface-request-user-auth.md"
+node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
+expect_out "요청서의 요구가 화면 동작과 대조된다" "IO.auth.login.gone"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
