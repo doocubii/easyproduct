@@ -365,7 +365,8 @@ for (const doc of loaded) {
       if (unfetched.length) unfetchedDisplay.push({ screen: s.id, doc: doc.path, vars: unfetched });
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
-                        ui: a.ui || null, sends: a.sends || [], receives: a.receives || [],
+                        ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
+                        receives: a.receives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
     }
@@ -416,6 +417,14 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) { for (const v of (a.sends || [])) dataRefs.push(v); for (const v of (a.receives || [])) dataRefs.push(v); }
       for (const b of (dat.bindings || [])) for (const v of (b.vars || (b.var ? [b.var] : []))) dataRefs.push(v);
       for (const dv of dataRefs) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 화면 ${s.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
+      // `transientSends`는 **저장하지 않는 일회성 입력**이라 등기부 대조를 받지 않는다. 그래서 여기가
+      // `sends` 제약(데이터 모델 실재 변수만)을 우회하는 **뒷문**이 될 수 있다 — 실재 변수를 여기 적었으면 잡는다.
+      for (const a of (dat.io || [])) for (const t of (a.transientSends || [])) {
+        if (t && t.name && dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+          dead++;
+        }
+      }
     }
     // 시나리오: refs 를 kind로 라우팅
     for (const sc of (o.scenarios || [])) for (const r of (sc.refs || [])) {
@@ -648,7 +657,9 @@ if (emitReq) {
     requests: picked.map((x) => ({
       ref: x.id || `${x.screen}#${x.action}`, screen: x.screen, action: x.action,
       ...(x.target ? { target: x.target } : {}), ...(x.ui ? { ui: x.ui } : {}),
-      sends: x.sends || [], receives: x.receives || [],
+      sends: x.sends || [],
+      ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
+      receives: x.receives || [],
       ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
       ...(x.semantics ? { semantics: x.semantics } : {}),
     })),
@@ -671,8 +682,8 @@ if (emitReq) {
       ? `> 전송은 \`${reqTransport}\`를 **희망**합니다(확정 아님 — 백엔드가 정하고, 다르면 사유를 남깁니다). 백엔드가 채울 자리: ${(SLOTS[reqTransport] || []).join(' · ')}`
       : '> 전송 방식은 백엔드가 정합니다.',
     '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
-    '| 동작 | 화면 | 보냄 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|',
-    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
+    '| 동작 | 화면 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|',
+    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
     '',
     ...(() => {
       // **묶기 후보는 범위 전체로 계산한다.** 이 계산의 존재 이유가 "화면(그리고 대개 도메인)을 가로지르는
