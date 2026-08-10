@@ -187,13 +187,18 @@ const emitReq = args.includes('--emit-interface-request');
 const argVal = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : dflt; };
 const reqTransport = argVal('--transport');
 const reqScope = argVal('--scope');
+const reqDomain = argVal('--domain');
+const listDomains = args.includes('--list-domains');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
   console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
   console.error('  --emit-needs     : 화면 동작에서 **서버 요구 목록**을 기계 판독 JSON으로 추출(백엔드 설계의 입력)');
-  console.error('  --emit-interface-request [--transport rest|grpc|graphql|ws|queue] [--scope user]');
+  console.error('  --emit-interface-request --scope <범위> --domain <도메인> [--transport rest|grpc|graphql|ws|queue]');
   console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
+  console.error('                       요청서는 **출처 화면 문서 1개당 1개**다(범위·도메인별로 갈린다).');
+  console.error('  --emit-interface-request --scope <범위> --list-domains');
+  console.error('                     : 그 범위에서 요청서를 뽑을 도메인 목록을 출력(호출 측이 돌면서 뽑는다)');
   process.exit(2);
 }
 
@@ -369,6 +374,7 @@ function dataRefOk(ref) {
 // 2차: 크로스도큐먼트 참조 무결성
 report('\n[2] 크로스도큐먼트 참조 (죽은 링크)');
 let refChecked = 0, dead = 0;
+const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
@@ -445,6 +451,9 @@ for (const doc of loaded) {
         report(`  ⚠ ${doc.path} 가 낡았다 — 출처 ${f.path} 가 생성 이후 바뀜(요청서를 다시 생성하세요: --emit-interface-request)`);
       }
     }
+    // 옛 배치(범위 통짜) 감지. 출처가 여럿이면 화면 하나만 고쳐도 **요청서 전체가 낡음**이 되어
+    // 어디가 낡았는지 알 수 없다. 도메인별로 갈라야 "이 요청서가 낡았다"가 정확해진다.
+    if (Array.isArray(o.from) && (o.from.length > 1 || !o.domain)) oldLayoutReq.push(doc.path);
   }
 }
 
@@ -571,15 +580,49 @@ if (emitReq) {
     rest: ['method', 'path', 'status'], grpc: ['service', 'rpc', 'requestMessage', 'responseMessage'],
     graphql: ['operationType', 'fieldName'], ws: ['channel', 'event'], queue: ['topic', 'key', 'deliveryGuarantee'],
   };
-  const picked = screenIo.filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server'
-    && (!reqScope || x.doc.includes(`/${reqScope}/`) || x.doc.includes(`-${reqScope}-`)));
+  // **범위(scope)는 필수다.** 빼면 사용자 앱과 백오피스 요구가 한 목록에 섞이고, 그러면 아래 묶기 후보가
+  // **권한 경계를 넘는 묶기**를 제안한다(백엔드가 그걸 묶으면 넓은 쪽으로 열려 정보가 샌다).
+  if (!reqScope) {
+    console.error('❌ --scope 가 필요합니다 (예: --scope user). 범위를 섞으면 권한이 다른 요구가 한 파일에 담깁니다.');
+    process.exit(2);
+  }
+  const inScope = screenIo.filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server'
+    && (x.doc.includes(`/${reqScope}/`) || x.doc.includes(`-${reqScope}-`)));
+  // 요청서의 입자는 **출처 화면 문서의 입자**를 따른다 — 화면은 문서가 아니라 문서 안의 절이라
+  // `revision`·`contentHash`가 없다. 문서 1개당 요청서 1개여야 "어느 요청서가 낡았나"가 정확해진다.
+  const domainOf = (p) => {
+    const base = p.split('/').pop().replace(/\.md$/, '');
+    const m = new RegExp(`^screen-design-${reqScope}-(.+)$`).exec(base);
+    return m ? m[1] : base;
+  };
+  const byDomain = new Map();
+  for (const x of inScope) {
+    const d = domainOf(x.doc);
+    if (!byDomain.has(d)) byDomain.set(d, []);
+    byDomain.get(d).push(x);
+  }
+  if (listDomains) {
+    // 서버 요구가 **0건인 도메인은 나오지 않는다** — 요청서를 만들지 않는 게 맞다(빈 인계물은 노이즈다).
+    for (const d of [...byDomain.keys()].sort()) console.log(d);
+    process.exit(0);
+  }
+  if (!reqDomain) {
+    console.error(`❌ --domain 이 필요합니다. 이 범위의 도메인: ${[...byDomain.keys()].sort().join(' · ') || '(서버 요구 없음)'}`);
+    console.error('   (요청서는 출처 화면 문서 1개당 1개다. 목록은 --list-domains 로 얻어 돌면서 뽑으세요.)');
+    process.exit(2);
+  }
+  const picked = byDomain.get(reqDomain) || [];
+  if (!picked.length) {
+    console.error(`❌ ${reqScope}/${reqDomain} 에 서버 요구가 없습니다 — 요청서를 만들지 않습니다.`);
+    process.exit(2);
+  }
   const fromDocs = [...new Set(picked.map((x) => x.doc))].sort().map((p) => {
     const c = cur.get(p) || {};
     return c.revision == null ? { path: p, contentHash: c.hash } : { path: p, revision: c.revision, contentHash: c.hash };
   });
   const block = {
     generatedAt: new Date().toISOString().slice(0, 10),
-    ...(reqScope ? { scope: reqScope } : {}),
+    scope: reqScope, domain: reqDomain,
     ...(reqTransport ? { preferredTransport: reqTransport, bindingSlots: SLOTS[reqTransport] || [] } : {}),
     from: fromDocs,
     requests: picked.map((x) => ({
@@ -595,7 +638,7 @@ if (emitReq) {
     '---', 'doc_type: interface-request', 'version: 1', 'ssot: prose', 'machine:', '  lang: json',
     '  tag: interface.requests', '  item: request-list', '  schema: schemas/interface-request.v1.schema.json',
     '---', '',
-    `# 인터페이스 요청서${reqScope ? ` — ${reqScope}` : ''} (${block.generatedAt} 생성)`, '',
+    `# 인터페이스 요청서 — ${reqScope} / ${reqDomain} (${block.generatedAt} 생성)`, '',
     '> **프론트가 백엔드에 넘기는 요구 목록입니다.** 화면 설계서의 동작에서 **기계로 생성**했으니 손으로 고치지 마세요 —',
     '> 화면을 고치고 다시 생성하면 됩니다. 이 문서는 SSOT가 아니라 파생물이고, 화면과 어긋나면 **화면이 이깁니다.**',
     reqTransport
@@ -606,20 +649,33 @@ if (emitReq) {
     ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
     '',
     ...(() => {
-      const g = sameShapeGroups(block.requests);
-      const sub = subsetCandidates(block.requests).slice(0, 20);
+      // **묶기 후보는 범위 전체로 계산한다.** 이 계산의 존재 이유가 "화면(그리고 대개 도메인)을 가로지르는
+      // 중복 찾기"라, 도메인 안만 보면 `IO.auth.*`와 `IO.mypage.*`의 중복이 **조용히** 사라진다.
+      // 계산은 넓게, 싣는 것은 **이 도메인과 얽힌 것만** — 그래야 도메인 담당자가 남의 목록을 읽지 않는다.
+      const mine = new Set(block.requests.map((r) => r.ref));
+      const label = (x) => x.id || `${x.screen}#${x.action}`;
+      const wide = inScope.map((x) => ({ ...x, ref: label(x) }));
+      const g = sameShapeGroups(wide).filter((x) => x.refs.some((r) => mine.has(r)));
+      const sub = subsetCandidates(wide).filter((x) => mine.has(x.forNeed) || mine.has(x.reuse)).slice(0, 20);
+      // 상대가 어느 도메인 파일에 있는지 붙인다 — 이 목록은 파일 밖을 가리키므로, 어디를 열어야 하는지
+      // 말해 주지 않으면 받는 쪽이 찾아 헤맨다.
+      const domOfRef = new Map(wide.map((x) => [x.ref, domainOf(x.doc)]));
+      const at = (r) => (mine.has(r) ? '' : ` (${domOfRef.get(r) || '?'})`);
+      const mark = (r) => '`' + r + '`' + at(r);
       const lines = [];
       if (sub.length) {
         lines.push('## 기존 인터페이스로 덮을 수 있는 후보 (한쪽이 다른 쪽에 포함됨)', '',
           '> 받는 값이 더 많은 요구를 이미 처리한다면, **적게 쓰는 화면에 새 인터페이스를 만들 필요가 없습니다.**',
-          '> 권한·정책·의미 요건이 다르면 묶으면 안 되니, **판단은 백엔드 몫**입니다.', '',
-          ...sub.map((x) => `- \`${x.forNeed}\` 는 \`${x.reuse}\` 로 덮을 수 있음 (더 오는 값: ${x.extra.join(', ') || '없음'})`), '');
+          '> 권한·정책·의미 요건이 다르면 묶으면 안 되니, **판단은 백엔드 몫**입니다.',
+          '> 괄호는 **그 요구가 사는 다른 도메인 요청서**입니다(이 범위 전체를 보고 찾은 후보입니다).', '',
+          ...sub.map((x) => `- ${mark(x.forNeed)} 는 ${mark(x.reuse)} 로 덮을 수 있음 (더 오는 값: ${x.extra.join(', ') || '없음'})`), '');
       }
       return g.length
         ? [...lines, '## 하나로 묶을 후보 (보내고 받는 것이 같은 요구)', '',
            '> 여러 화면이 같은 데이터를 주고받고 있습니다. 백엔드에서 **인터페이스 하나로 묶을 수 있습니다**',
-           '> (`basis`에 여럿을 적으면 됩니다). **판단은 백엔드 몫**입니다 — 변수가 같아도 다른 일일 수 있습니다.', '',
-           ...g.map((x) => `- ${x.refs.map((r) => '`' + r + '`').join(' · ')} — 보냄 ${x.sends.join(', ') || '—'} / 받음 ${x.receives.join(', ') || '—'}`), '']
+           '> (`basis`에 여럿을 적으면 됩니다). **판단은 백엔드 몫**입니다 — 변수가 같아도 다른 일일 수 있습니다.',
+           '> 괄호는 **그 요구가 사는 다른 도메인 요청서**입니다.', '',
+           ...g.map((x) => `- ${x.refs.map(mark).join(' · ')} — 보냄 ${x.sends.join(', ') || '—'} / 받음 ${x.receives.join(', ') || '—'}`), '']
         : lines;
     })(),
     '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
@@ -669,6 +725,15 @@ if (screenIo.length) {
     report(`  · target 한정자: ${[...quals.entries()].map(([k, v]) => `${k} ${v}건`).join(' · ')}`);
     report('     (한정자 등기부는 아직 없다 — 표기가 갈렸으면 통일하세요)');
   }
+}
+
+// 화면 문서가 없는 세트(요청서만 넘겨받은 리포 등)에서도 알려야 하므로 위 화면 검사 밖에 둔다.
+if (oldLayoutReq.length) {
+  report(`  ⚠ 옛 배치(범위 통짜) 인터페이스 요청서 ${oldLayoutReq.length}건 — **다시 뽑기 필요**`);
+  for (const p of oldLayoutReq.slice(0, 5)) report(`     · ${p}`);
+  if (oldLayoutReq.length > 5) report(`     · 외 ${oldLayoutReq.length - 5}건`);
+  report('     → 요청서는 출처 화면 문서 1개당 1개다. 통짜면 화면 하나만 고쳐도 전체가 낡음이 되어 어디가 낡았는지 모른다.');
+  report('     → interface-requests/<범위>/ 아래 도메인별로 다시 뽑고(--scope·--domain), 옛 파일을 지운 뒤 색인을 갱신하세요.');
 }
 
 // ── 3차: 파장·신선도 (상위 결정이 바뀌었는데 하류가 안 따라갔나) ──
