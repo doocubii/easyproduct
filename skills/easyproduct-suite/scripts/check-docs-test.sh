@@ -20,10 +20,10 @@ pass=0; fail=0
 ok()  { echo "  ✓ $1"; pass=$((pass+1)); }
 bad() { echo "  ✗ $1"; fail=$((fail+1)); }
 expect_out() {   # expect_out <이름> <있어야 할 문자열>
-  if grep -qF "$2" "$WORK/out.txt"; then ok "$1"; else bad "$1 — 출력에 없음: $2"; fi
+  if grep -qF -- "$2" "$WORK/out.txt"; then ok "$1"; else bad "$1 — 출력에 없음: $2"; fi
 }
 expect_no_out() {
-  if grep -qF "$2" "$WORK/out.txt"; then bad "$1 — 나오면 안 되는 출력: $2"; else ok "$1"; fi
+  if grep -qF -- "$2" "$WORK/out.txt"; then bad "$1 — 나오면 안 되는 출력: $2"; else ok "$1"; fi
 }
 run() { node "$CHECK" "$WORK/set" "$@" > "$WORK/out.txt" 2>&1; echo $?; }
 
@@ -674,6 +674,208 @@ expect_out "어디로 옮기라는지 알려준다" "sends"
 mkscreen '{ "name": "keyword" }'
 node "$CHECK" "$WORK/transient" > "$WORK/out.txt" 2>&1
 expect_out "뜻 없는 일회성 입력은 스키마가 막는다" "desc 누락"
+
+echo
+echo "[18] 변경 동작의 응답을 조회로 오인하지 않는다 (미탐 — 조용히 통과하던 자리)"
+# receives는 진입 조회만의 것이 아니다. 승인·반려·저장도 결과를 받는다. 그 응답이 화면 값을 덮으면
+# "미조회 0"이 되어 **진입 조회가 없는데 통과**한다(실측: 상세 화면 둘이 그렇게 요청서에 0줄로 나갔다).
+mkdir -p "$WORK/mutation/screens/backoffice/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/mutation/screens/backoffice/schemas/"
+cat > "$WORK/mutation/screens/backoffice/screen-design-backoffice-tenant.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.admin.tenantProvision.detail", "components": ["UI.x"], "data": {
+  "display": ["orgApplication.orgName","orgApplication.bizNo","orgApplication.phone"], "bindings": [],
+  "io": [
+    { "id": "IO.admin.tenantProvision.approve", "action": "승인", "target": "server", "ui": "UI.x",
+      "sends": ["orgApplication.id"],
+      "receives": ["orgApplication.orgName","orgApplication.bizNo","orgApplication.phone"] },
+    { "id": "IO.admin.tenantProvision.reject", "action": "반려", "target": "server", "ui": "UI.x",
+      "sends": ["orgApplication.id"],
+      "receives": ["orgApplication.orgName","orgApplication.bizNo","orgApplication.phone"] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/mutation" > "$WORK/out.txt" 2>&1
+expect_no_out "옛 신호는 여기서 침묵한다(변경 응답이 값을 덮어서)" "아무 동작도 가져오지 않는 데이터"
+expect_out "진입 로드 0건을 따로 잡는다" "진입 로드가 하나도 없는 화면** 1개"
+expect_out "어느 화면인지 짚는다" "FEAT.admin.tenantProvision.detail"
+expect_out "변경 동작의 응답은 조회가 아님을 밝힌다" "변경 동작의 응답"
+# 진입 로드를 채우면 해제된다
+sed -i 's|"io": \[|"io": [\n    { "id": "IO.admin.tenantProvision.load", "action": "신청 상세 가져오기", "target": "server",\n      "sends": ["orgApplication.id"],\n      "receives": ["orgApplication.orgName","orgApplication.bizNo","orgApplication.phone"] },|' \
+  "$WORK/mutation/screens/backoffice/screen-design-backoffice-tenant.md"
+node "$CHECK" "$WORK/mutation" > "$WORK/out.txt" 2>&1
+expect_no_out "진입 로드를 채우면 해제된다" "진입 로드가 하나도 없는 화면"
+
+echo
+echo "[19] --verbose — 목록을 자르지 않는다"
+# 5건에서 자르면 작업 목록을 만들 수 없어, 실사용자가 검사기와 같은 판정을 다시 구현했다.
+mkdir -p "$WORK/many/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/many/screens/user/schemas/"
+{
+  printf -- '---\ndoc_type: screen-design\nversion: 1\nrevision: 1\nssot: prose\nmachine:\n  lang: json\n  tag: screendesign.screens\n  schema: schemas/screen-design.v1.schema.json\n---\n'
+  printf '```json screendesign.screens\n{ "screens": ['
+  for i in 1 2 3 4 5 6 7; do
+    [ $i -gt 1 ] && printf ','
+    printf '{ "id": "FEAT.d%s.list", "components": ["UI.x"], "data": { "display": ["g%s.f"], "bindings": [], "io": [] } }' "$i" "$i"
+  done
+  printf '] }\n```\n'
+} > "$WORK/many/screens/user/screen-design-user-many.md"
+node "$CHECK" "$WORK/many" > "$WORK/out.txt" 2>&1
+expect_out "기본은 5건까지 + 안내" "--verbose로 전부"
+if [ "$(grep -c '· FEAT.d' "$WORK/out.txt")" -le 12 ]; then ok "기본 출력은 짧게 유지된다"; else bad "기본 출력이 안 잘림"; fi
+node "$CHECK" "$WORK/many" --verbose > "$WORK/out.txt" 2>&1
+if grep -q "FEAT.d7.list" "$WORK/out.txt"; then ok "--verbose는 전부 낸다"; else bad "--verbose인데 잘림"; fi
+expect_no_out "--verbose에는 '외 n건' 안내가 없다" "--verbose로 전부"
+
+echo
+echo "[20] 스키마 위반에 형태 힌트를 곁들인다"
+# "타입 object 아님"만 받으면 무엇을 써야 하는지 알 수 없다(실사용 왕복).
+mkdir -p "$WORK/hint/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/hint/screens/user/schemas/"
+cat > "$WORK/hint/screens/user/s.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.law.search", "components": ["UI.x"], "data": {
+  "display": [], "bindings": [],
+  "io": [ { "id": "IO.law.search.go", "action": "검색", "target": "server",
+            "sends": [], "transientSends": ["keyword"], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/hint" > "$WORK/out.txt" 2>&1
+expect_out "무엇을 쓰면 되는지 알려준다" "name\": \"keyword\""
+
+echo
+echo "[21] 공통 프레임 — 껍데기 동작이 어디에도 못 담기던 자리"
+# GNB·LNB·상단바에도 서버와 주고받는 일이 있다(세션 조회·로그아웃). 어느 화면 것도 아니라 지금까지
+# 통째로 샜다 — 실측: 요청서 96건에 세션 조회 없음, 로그아웃은 마이페이지 화면에 억지로 귀속.
+FR="$WORK/frame"
+mkdir -p "$FR/screens/backoffice/schemas" "$FR/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$FR/screens/backoffice/schemas/"
+frsrc="$(find "$HERE/../.." -name "screen-design-frame.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$frsrc" ] && cp "$frsrc" "$FR/screens/backoffice/schemas/"
+uisrc="$(find "$HERE/../.." -name "ui-components.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$uisrc" ] && cp "$uisrc" "$FR/ssot/schemas/"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$FR/ssot/schemas/"
+cat > "$FR/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "operator", "label": "운영자", "fields": [
+  { "name": "id", "label": "ID", "type": "문자" },
+  { "name": "name", "label": "이름", "type": "문자" },
+  { "name": "role", "label": "역할", "type": "문자" } ] }
+```
+MD
+cat > "$FR/screens/backoffice/screen-design-backoffice-admin.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.admin.login", "components": ["UI.nav.topbar"],
+  "data": { "display": [], "bindings": [], "io": [] } } ] }
+```
+MD
+mkframe() {  # $1 = frames 배열 본문
+cat > "$FR/screens/backoffice/screen-design-backoffice-index.md" <<MD
+---
+doc_type: screen-design-index
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.frame
+  item: frame-list
+  schema: schemas/screen-design-frame.v1.schema.json
+---
+# 백오피스 — 공통 UI 정의
+
+\`\`\`json screendesign.frame
+{ "scope": "backoffice", "frames": [$1] }
+\`\`\`
+MD
+}
+FRAME_OK='{ "id": "FRAME.backoffice.shell", "label": "공통 껍데기",
+  "components": ["UI.nav.lnb","UI.nav.topbar"],
+  "appliesTo": { "except": ["FEAT.admin.login"] },
+  "data": { "display": ["operator.name","operator.role"], "io": [
+    { "id": "IO.frame.shell.session", "action": "세션 운영자 조회", "target": "server",
+      "sends": [], "receives": ["operator.id","operator.name","operator.role"],
+      "semantics": "전 화면 진입 시 일어난다. 응답이 없으면 로그인으로 보낸다." },
+    { "id": "IO.frame.shell.logout", "action": "로그아웃", "target": "server",
+      "ui": "UI.nav.topbar", "sends": [], "receives": [] } ] } }'
+
+# ⓐ 프레임 블록이 없으면 — 껍데기 동작을 담을 자리가 없다고 알린다
+rm -f "$FR/screens/backoffice/screen-design-backoffice-index.md"
+cat > "$FR/screens/backoffice/screen-design-backoffice-index.md" <<'MD'
+---
+doc_type: screen-design-index
+version: 1
+revision: 1
+ssot: prose
+---
+# 백오피스 — 공통 UI 정의 (옛 형식: 기계 블록 없음)
+MD
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_out "프레임 블록이 없으면 알린다(옛 세트 감지)" "공통 프레임 블록이 없는 화면 설계 index 1개"
+expect_out "무엇이 빠지는지 밝힌다" "요청서에 한 줄도 안 나갑니다"
+
+# ⓑ 채우면 — 등기부에 잡히고 경고가 해제된다
+mkframe "$FRAME_OK"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_no_out "채우면 경고가 해제된다" "공통 프레임 블록이 없는"
+expect_out "프레임을 등기부에 올린다" "프레임 1"
+
+# ⓒ 요청서 — 프레임은 자기 도메인(frame)으로 갈린다. 출처는 index 문서 하나다.
+node "$CHECK" "$FR" --emit-interface-request --scope backoffice --list-domains 2>/dev/null > "$WORK/d.txt"
+if grep -qx "frame" "$WORK/d.txt"; then ok "요청서 도메인에 frame이 뜬다"; else bad "frame 도메인 없음"; fi
+node "$CHECK" "$FR" --emit-interface-request --scope backoffice --domain frame 2>/dev/null > "$WORK/fr-req.md"
+if grep -q "IO.frame.shell.session" "$WORK/fr-req.md"; then ok "세션 조회가 요청서로 나간다"; else bad "세션 조회가 안 나감"; fi
+if [ "$(grep -c '"path": "screens/' "$WORK/fr-req.md")" = "1" ]; then ok "출처가 index 문서 하나다"; else bad "출처가 여럿"; fi
+expect_file() { if grep -qF -- "$2" "$3"; then ok "$1"; else bad "$1 — 없음: $2"; fi; }
+expect_file "전 화면에 걸린다는 사실을 밝힌다" "걸리는 모든 화면에서" "$WORK/fr-req.md"
+expect_file "예외 화면을 싣는다(로그인 순환 방지)" "FEAT.admin.login" "$WORK/fr-req.md"
+
+# ⓓ 프레임도 화면과 같은 죽은 링크 검사를 받는다
+mkframe "$(printf '%s' "$FRAME_OK" | sed 's/"UI.nav.lnb"/"UI.nav.ghost"/')"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_out "프레임 컴포넌트도 인벤토리와 대조한다" "프레임 FRAME.backoffice.shell 의 컴포넌트 UI.nav.ghost"
+mkframe "$(printf '%s' "$FRAME_OK" | sed 's/"FEAT.admin.login"/"FEAT.admin.ghost"/')"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_out "appliesTo의 화면도 대조한다(오타면 가드가 로그인에 남는다)" "appliesTo FEAT.admin.ghost"
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "screen-design-frame.v1",
+  "title": "공통 프레임 (screendesign.frame)",
+  "description": "화면들을 **감싸는 껍데기**(백오피스 LNB·상단바 / 사용자 앱 GNB·푸터)가 주고받는 것. 화면 설계서 index 문서의 '공통 UI 정의' 산문을 미러한다. 그 절은 지금까지 **모양**(배치·스티키·접힘·상태 표준)만 담았고 **동작**은 담을 자리가 없었다 — 그래서 세션 조회·로그아웃 같은 요구가 어느 화면의 `data.io`에도 속하지 못하고 인터페이스 요청서에서 통째로 샜다(실측: 요청서 96건에 세션 조회 없음, 로그아웃은 마이페이지 화면에 억지로 귀속). 프레임은 **목적지가 아니라 용기**다 — `FEAT`처럼 사용자가 가는 곳이 아니라, 가 있는 동안 늘 거기 있는 것이다. 그래서 `FEAT`을 주지 않고 별도 접두사 `FRAME.*`을 쓴다.",
+  "type": "object",
+  "required": ["frames"],
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "type": "string",
+      "description": "이 프레임들이 사는 범위(user · backoffice). 화면 설계서가 범위별로 갈리므로 프레임도 갈린다."
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "description": "이 범위의 공통 프레임들. 보통 하나지만, 인증 전/후로 껍데기가 갈리면 둘 이상이다(예: `shell` · `authShell`).",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "components", "data"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^FRAME\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*$",
+            "description": "`FRAME.<범위>.<이름>` (예: `FRAME.backoffice.shell`). 다른 문서가 이 껍데기를 가리키는 안정적인 이름이다. **`FEAT`을 쓰지 않는다** — 프레임은 기능이 아니라서 IA의 기능 목록에 없고, 그 목록을 오염시키지 않기 위해 접두사를 가른다."
+          },
+          "label": {
+            "type": "string",
+            "description": "사람이 읽는 이름(예: '백오피스 공통 껍데기 — LNB + 상단바')."
+          },
+          "components": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "이 껍데기를 이루는 `UI.*` 컴포넌트 전부(산문 '공통 UI 정의'에 등장한 것). **최소 1개** — id만 담은 엔트리는 산문 헤딩을 중복한 빈 껍데기라 무의미하다."
+          },
+          "appliesTo": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "description": "이 껍데기가 **걸리는 화면 범위**. 없으면 그 범위의 모든 화면에 걸린다. **로그인 화면은 껍데기 밖인 경우가 많다** — 안 빼면 '로그인하려면 세션이 있어야 한다'는 순환이 문서에 박힌다.",
+            "properties": {
+              "except": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "이 껍데기가 **걸리지 않는** 화면(`FEAT.*`). 예: 로그인·비밀번호 재설정."
+              },
+              "only": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "이 껍데기가 **걸리는 화면만** 나열(`FEAT.*`). 프레임이 둘 이상일 때 쓴다. `except`와 함께 쓰지 않는다."
+              }
+            }
+          },
+          "data": {
+            "type": "object",
+            "required": ["display", "io"],
+            "additionalProperties": false,
+            "description": "껍데기의 데이터 축. 화면 엔트리와 **같은 모양**이다 — 다른 것은 소속이 화면이 아니라 프레임이라는 점뿐.",
+            "properties": {
+              "display": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "껍데기가 **보여주는** 데이터 변수(예: 상단바의 `operator.name`·`operator.role`). 데이터 모델 실재 변수만. 없으면 `[]` 명시(`io`와 대칭)."
+              },
+              "io": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/io" },
+                "description": "껍데기에서 **일어나는 일**. 세션 조회(진입 가드) · 로그아웃 · 워크스페이스 전환 · 전역 검색 · 알림. **여기 없으면 요청서에 안 나가고 백엔드는 그 요구가 없는 줄 안다.** 없으면 `[]` 명시."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "io": {
+      "type": "object",
+      "required": ["action", "sends", "receives"],
+      "additionalProperties": false,
+      "description": "화면의 `data.io[]`와 같은 계약이다. 다만 이 동작은 **한 화면이 아니라 걸리는 모든 화면에서** 일어난다 — 그 사실을 `semantics`에 밝힌다(백엔드가 호출 빈도·캐시·세션 저장소를 정하는 근거다).",
+      "properties": {
+        "action": { "type": "string", "description": "동작 이름(예: '세션 운영자 조회' · '로그아웃')." },
+        "id": {
+          "type": "string",
+          "pattern": "^IO\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*\\.[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "동작 anchor `IO.<도메인>.<이름>.<동작>`. 프레임 동작은 도메인 자리에 `frame`을 쓴다(예: `IO.frame.shell.session`). 요청서·백엔드 계약이 이걸 참조한다."
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^(server|local|client)(\\.[A-Za-z][A-Za-z0-9_-]*)*$",
+          "description": "누구와 주고받는지. 첫 마디가 갈래를 정한다. **세션 판정이 로컬 토큰만 보는 방식이면 `local`이고, 그러면 서버 요구가 아니다** — 요청서에도 안 나간다."
+        },
+        "ui": { "type": "string", "description": "트리거 컴포넌트(`UI.*`). **진입 가드처럼 누르는 것이 아니면 비운다.**" },
+        "sends": { "type": "array", "items": { "type": "string" }, "description": "보내는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`." },
+        "transientSends": {
+          "type": "array",
+          "minItems": 1,
+          "description": "보내지만 **저장하지 않는 일회성 입력**(검색어 등). 등기부 대조를 받지 않으므로 뜻을 함께 담는다. 없으면 이 필드를 두지 않는다.",
+          "items": {
+            "type": "object",
+            "required": ["name", "desc"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "입력 이름." },
+              "desc": { "type": "string", "description": "이 입력이 무엇인지 한 줄. **필수**." }
+            }
+          }
+        },
+        "receives": { "type": "array", "items": { "type": "string" }, "description": "받는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`." },
+        "policies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "이 동작에 걸리는 제품 규칙(`POL.*`). **가드는 여기를 채운다** — '미인증이면 막는다'는 결정은 정책서 것이고, 프레임은 그걸 참조만 한다(중복 서술 금지)."
+        },
+        "semantics": {
+          "type": "string",
+          "description": "행동 규약 한 문장. 프레임 동작은 **언제 일어나는지와 실패하면 무슨 일이 일어나는지**를 반드시 담는다 — 보통 진입 로드는 실패해도 그 화면이 빈 상태로 그려지지만, 가드는 **화면이 아예 안 그려지고 다른 데로 간다**. 예: '전 화면 진입 시 일어난다. 응답이 없으면 화면을 그리지 않고 로그인으로 보낸다(복귀 주소 유지).'"
+        }
+      }
+    }
+  }
+}

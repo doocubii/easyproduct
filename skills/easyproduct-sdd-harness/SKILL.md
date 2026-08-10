@@ -92,7 +92,7 @@ spec-kit 프로젝트에서 **"이 코드가 승인된 spec에서 파생됐는�
 어댑터를 골랐는데 `idPrefixes`가 비어 있으면 **⑤ 근거가 아무것도 못 본다.** 어댑터를 고르면 아래를 채운다.
 
 - **`anchorRegistry.idPrefixes`** — easyproduct 앵커 접두사 등기부를 그대로 넣는다:
-  `["FEAT","DATA","POL","UI","SCN","IO","BEITF","BESTORE","BESCHEMA","BEARCH"]`
+  `["FEAT","DATA","POL","UI","SCN","IO","FRAME","BEITF","BESTORE","BESCHEMA","BEARCH"]`
   (정본은 `easyproduct-suite/assets/anchor-prefixes.json`. 세트가 접두사를 늘리면 이 목록도 늘어난다 —
   **등기부 밖 접두사는 참조인지도 모르는 상태**가 되어 조용히 검사 밖으로 나간다.)
 - **`upstreamDocs.globs`** — 세트의 **색인(`00-index.md`)의 `docbundle.docs` 매니페스트**를 읽어,
@@ -217,8 +217,8 @@ Step 0-5·0-6에서 찾은 지점에 **얹는다**. 이미 있는 하네스를 �
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.9.2`
-- **릴리즈 날짜**: 2026-08-10
+- **버전**: `0.10.0`
+- **릴리즈 날짜**: 2026-08-11
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
 - 버전·릴리즈 확정 규칙은 저장소의 `VERSIONING.md`, 버전별 변경 내역은 `CHANGELOG.md`에 있다.

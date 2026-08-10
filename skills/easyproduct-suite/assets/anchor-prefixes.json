@@ -7,19 +7,83 @@
     "**새 접두사를 도입하면 이 파일을 반드시 갱신한다.** skill-lint가 하네스 어댑터 기본값과 대조해 드리프트를 막는다."
   ],
   "prefixes": [
-    { "prefix": "FEAT", "owner": "ia", "what": "기능·화면", "block": "ia.features / screendesign.screens" },
-    { "prefix": "DATA", "owner": "data-model", "what": "데이터 그룹", "block": "datamodel.group" },
-    { "prefix": "POL", "owner": "policy", "what": "정책 규칙", "block": "policy.rules" },
-    { "prefix": "UI", "owner": "ui-components", "what": "UI 컴포넌트", "block": "uicomponents.list" },
-    { "prefix": "SCN", "owner": "scenario", "what": "시나리오", "block": "scenario.trace" },
-    { "prefix": "IO", "owner": "screen-design", "what": "화면의 동작(진입 로드·사용자 동작)", "block": "screendesign.screens 의 data.io[].id" },
-    { "prefix": "BEITF", "owner": "backend-interface", "what": "백엔드 인터페이스 계약", "block": "backend.interfaces" },
-    { "prefix": "BESTORE", "owner": "backend-storage", "what": "저장소", "block": "backend.stores" },
-    { "prefix": "BESCHEMA", "owner": "backend-schema", "what": "논리 테이블", "block": "backend.tables" },
-    { "prefix": "BEARCH", "owner": "backend-architecture", "what": "시스템 조각·외부 연동", "block": "backend.system" }
+    {
+      "prefix": "FEAT",
+      "owner": "ia",
+      "what": "기능·화면",
+      "block": "ia.features / screendesign.screens"
+    },
+    {
+      "prefix": "DATA",
+      "owner": "data-model",
+      "what": "데이터 그룹",
+      "block": "datamodel.group"
+    },
+    {
+      "prefix": "POL",
+      "owner": "policy",
+      "what": "정책 규칙",
+      "block": "policy.rules"
+    },
+    {
+      "prefix": "UI",
+      "owner": "ui-components",
+      "what": "UI 컴포넌트",
+      "block": "uicomponents.list"
+    },
+    {
+      "prefix": "SCN",
+      "owner": "scenario",
+      "what": "시나리오",
+      "block": "scenario.trace"
+    },
+    {
+      "prefix": "IO",
+      "owner": "screen-design",
+      "what": "화면의 동작(진입 로드·사용자 동작)",
+      "block": "screendesign.screens 의 data.io[].id"
+    },
+    {
+      "prefix": "BEITF",
+      "owner": "backend-interface",
+      "what": "백엔드 인터페이스 계약",
+      "block": "backend.interfaces"
+    },
+    {
+      "prefix": "BESTORE",
+      "owner": "backend-storage",
+      "what": "저장소",
+      "block": "backend.stores"
+    },
+    {
+      "prefix": "BESCHEMA",
+      "owner": "backend-schema",
+      "what": "논리 테이블",
+      "block": "backend.tables"
+    },
+    {
+      "prefix": "BEARCH",
+      "owner": "backend-architecture",
+      "what": "시스템 조각·외부 연동",
+      "block": "backend.system"
+    },
+    {
+      "prefix": "FRAME",
+      "owner": "screen-design-index",
+      "what": "공통 프레임(화면들을 감싸는 껍데기)",
+      "block": "screendesign.frame"
+    }
   ],
   "unprefixed": [
-    { "kind": "데이터 필드", "form": "<group>.<field>", "why": "사람용 표 가독성을 위해 접두사를 붙이지 않는다. `<X>.<Y>`에서 X가 datamodel.group의 그룹 이름과 같으면 데이터 필드로 해석한다." },
-    { "kind": "디자인 토큰", "form": "color.* · spacing.* · radius.* · type.*", "why": "`machine.namespace: token`. 카테고리 이름이 곧 접두사라 대문자 접두사를 두지 않는다." }
+    {
+      "kind": "데이터 필드",
+      "form": "<group>.<field>",
+      "why": "사람용 표 가독성을 위해 접두사를 붙이지 않는다. `<X>.<Y>`에서 X가 datamodel.group의 그룹 이름과 같으면 데이터 필드로 해석한다."
+    },
+    {
+      "kind": "디자인 토큰",
+      "form": "color.* · spacing.* · radius.* · type.*",
+      "why": "`machine.namespace: token`. 카테고리 이름이 곧 접두사라 대문자 접두사를 두지 않는다."
+    }
   ]
 }

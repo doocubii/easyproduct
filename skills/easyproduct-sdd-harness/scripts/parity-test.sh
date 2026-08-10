@@ -249,6 +249,53 @@ MD
     "any('interface-request' in n for n in d.get('notes', []))" -- --full
   git checkout -- sdd-policy.json specs/001-login/spec.md 2>/dev/null || true
   rm -rf app_docs/interface-requests app_docs/00-index.md
+
+  # G: 모노레포 — specsDir가 두 마디면 슬러그 파싱이 밀린다(실측 결함).
+  #    references/monorepo.md가 "frontend-user/specs"를 권장 예시로 싣고 있어, 우리가 시킨 설정이
+  #    ③ 결합을 **항상 발화**시켰다. warn에선 소음이지만 block 졸업 시 모든 커밋이 막힌다.
+  local mono="$WORK/mono"
+  rm -rf "$mono"; mkdir -p "$mono/track/specs/001-login" "$mono/track/src/auth" "$mono/track/.specify/memory"
+  cd "$mono" || exit 1
+  git init -q -b main && git config user.email t@t && git config user.name t
+  printf '# Constitution\n\n**Version**: 1.0.0\n' > track/.specify/memory/constitution.md
+  printf '# spec\n- **FR-001**: 로그인\n' > track/specs/001-login/spec.md
+  printf '# plan\n' > track/specs/001-login/plan.md
+  printf '# tasks\n' > track/specs/001-login/tasks.md
+  printf '{ "sources": [] }\n' > track/specs/001-login/sources.json
+  printf '// @sdd 001-login\nexport const login = 1;\n' > track/src/auth/login.ts
+  cat > sdd-policy.json <<'JSON'
+{
+  "specsDir": "track/specs",
+  "requiredPhaseFiles": ["spec.md","plan.md","tasks.md"],
+  "requiredPinFile": "sources.json",
+  "governedGlobs": ["track/src/**/*.ts"],
+  "allowlist": [],
+  "provenanceTag": "@sdd",
+  "commentSyntaxes": ["//","#","/*"],
+  "upstreamDocs": { "globs": ["track/.specify/memory/constitution.md"], "docsAdapter": "generic",
+                    "anchorRegistry": { "genericIdPattern": "REQ-[0-9]+" } },
+  "pins": { "location": "track/specs/<slug>/sources.json", "record": ["version","contentHash"], "impactUnit": "file" },
+  "sources": { "semverLine": "**Version**:" },
+  "specRefs": { "scanFiles": ["spec.md","plan.md"] },
+  "reviewRecord": { "severity": "off" },
+  "severity": { "specRefs": "off" }
+}
+JSON
+  git add -A >/dev/null && git commit -qm init
+  # 관장 파일과 그 슬라이스를 **함께** 고친다 → ③은 발화하면 안 된다
+  printf '// @sdd 001-login\nexport const login = 2;\n' > track/src/auth/login.ts
+  printf '# plan\n수정\n' > track/specs/001-login/plan.md
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local runner=node; [ "$impl" == "$PY_IMPL" ] && runner=python3
+    "$runner" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    local label=node; [ "$runner" == "python3" ] && label=py
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+sys.exit(0 if [x for x in d['violations'] if x['rule']=='coupling']==[] else 1)
+"; then ok "G 두 마디 specsDir에서 슬라이스 변경을 인식한다($label)"; else bad "G 슬러그 파싱이 밀림($label)"; fi
+  done
+  cd "$WORK/ep" || exit 1
 }
 
 make_fixture generic
