@@ -6,6 +6,8 @@
   "type": "object",
   "required": [
     "generatedAt",
+    "scope",
+    "domain",
     "from",
     "requests"
   ],
@@ -18,7 +20,11 @@
     },
     "scope": {
       "type": "string",
-      "description": "이 요청서가 담는 범위(예: user · backoffice). 화면 설계서가 범위별로 갈리므로 요청서도 갈린다."
+      "description": "이 요청서가 담는 **범위**(예: user · backoffice). 담당 개발자가 갈리는 경계라 폴더로도 갈린다(`interface-requests/<범위>/`). **필수** — 범위를 섞으면 권한이 다른 요구가 한 파일에 담기고, 묶기 후보가 권한 경계를 넘는 묶기를 제안하게 된다."
+    },
+    "domain": {
+      "type": "string",
+      "description": "이 요청서가 담는 **도메인**(예: auth · order). 출처 화면 문서 하나에 요청서 하나가 대응한다 — 요청서의 입자는 **출처 문서의 입자**를 따라야 낡음 판정이 정확하다(화면은 문서가 아니라 문서 안의 절이라 `revision`·`contentHash`가 없다). **필수** — 없으면 범위 통짜 옛 배치이고, 그때는 화면 하나만 고쳐도 요청서 전체가 낡음이 되어 어디가 낡았는지 알 수 없다."
     },
     "preferredTransport": {
       "enum": [
@@ -41,7 +47,7 @@
     "from": {
       "type": "array",
       "minItems": 1,
-      "description": "이 요청서를 뽑아낸 **출처 문서와 그때의 상태 스냅샷**. 비면 무엇에서 나왔는지 알 수 없어 낡음을 판정할 수 없다. 이 스냅샷이 있어야 점검기가 '화면은 개정됐는데 요청서는 그대로'를 잡는다.",
+      "description": "이 요청서를 뽑아낸 **출처 문서와 그때의 상태 스냅샷**. 도메인별로 갈렸으므로 **출처는 하나**다 — 그래야 '이 요청서가 낡았다'가 정확해진다. 비면 무엇에서 나왔는지 알 수 없어 낡음을 판정할 수 없다.",
       "items": {
         "type": "object",
         "required": [

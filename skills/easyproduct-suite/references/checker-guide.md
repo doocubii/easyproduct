@@ -54,7 +54,7 @@
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
 | `review` | `review.snapshot` | review.v1 | (없음 — 점검 흔적) | prose |
 | `interface-request` | `interface.requests` | interface-request.v1 | (없음 — `IO.*`를 참조만) | prose |
-> `interface-request`의 관례 경로는 **`interface-requests/interface-request-<범위>.md`**(매니페스트 `role: handoff`). 기계로 생성하는 파생물이지만 **커밋한다** — 다른 팀에 넘기는 산출물이고 신선도 판정의 기준이라 저장소에 남아야 한다.
+> `interface-request`의 관례 경로는 **`interface-requests/<범위>/interface-request-<범위>-<도메인>.md`**(매니페스트 `role: handoff`). **출처 화면 문서 1개당 요청서 1개**다 — 파생물의 입자는 출처 문서의 입자를 따라야 "어느 요청서가 낡았나"가 정확해진다(화면은 문서가 아니라 문서 안의 절이라 `revision`·`contentHash`가 없다). 범위를 폴더로 올리는 것은 **담당 개발자가 갈리는 경계**여서다. 기계로 생성하는 파생물이지만 **커밋한다** — 다른 팀에 넘기는 산출물이고 신선도 판정의 기준이라 저장소에 남아야 한다. `domain`이 없거나 `from`의 출처가 여럿이면 **옛 배치**이고, 점검기가 "다시 뽑기 필요"로 집계한다.
 | `backend-architecture` | `backend.system` | backend-architecture.v1 | `BEARCH.mod.*`·`BEARCH.ext.*` | prose |
 | `backend-storage` | `backend.stores` | backend-storage.v1 | `BESTORE.<이름>` | prose |
 | `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |
