@@ -360,7 +360,7 @@ echo "[10] 인터페이스 요청서 — 기계 생성 · 등록 · 낡음 판�
 # 출처 스냅샷으로 낡음이 잡혀야 한다(파일로 굳히는 대가를 관리하는 유일한 장치다).
 src="$(find "$HERE/../.." -name "interface-request.v1.schema.json" -path '*/schemas/*' | head -1)"
 [ -n "$src" ] && cp "$src" "$SET/schemas/"
-node "$CHECK" "$SET" --emit-interface-request --transport grpc > "$SET/interface-request.md" 2>/dev/null
+node "$CHECK" "$SET" --emit-interface-request --scope user --domain order --transport grpc > "$SET/interface-request.md" 2>/dev/null
 if grep -q "preferredTransport" "$SET/interface-request.md" && grep -q "IO.auth.login.submit" "$SET/interface-request.md"; then
   ok "요청서를 기계로 생성(희망 전송·요구 포함)"; else bad "요청서 생성 실패"; fi
 if grep -q "requestMessage" "$SET/interface-request.md"; then ok "전송별 채울 자리(bindingSlots)를 낸다"; else bad "bindingSlots 없음"; fi
@@ -428,7 +428,7 @@ machine:
        "sends": ["member.phone"], "receives": ["member.id"] } ] } } ] }
 ```
 MD
-node "$CHECK" "$WORK/same" --emit-interface-request > "$WORK/same-req.md" 2>/dev/null
+node "$CHECK" "$WORK/same" --emit-interface-request --scope user --domain s > "$WORK/same-req.md" 2>/dev/null
 if grep -q "묶을 후보" "$WORK/same-req.md"; then ok "같은 형태 요구를 묶을 후보로 짚는다"; else bad "묶을 후보를 안 짚음"; fi
 if grep -q "IO.auth.login.submit" "$WORK/same-req.md" && grep -q "IO.home.main.login" "$WORK/same-req.md"; then
   ok "두 요구가 모두 살아 있다(자동으로 합치지 않는다)"; else bad "요구가 사라짐"; fi
@@ -462,10 +462,88 @@ machine:
        "receives": ["order.status","order.amount","order.pickupSlot","order.createdAt"] } ] } } ] }
 ```
 MD
-node "$CHECK" "$WORK/subset" --emit-interface-request > "$WORK/subset-req.md" 2>/dev/null
+node "$CHECK" "$WORK/subset" --emit-interface-request --scope user --domain s > "$WORK/subset-req.md" 2>/dev/null
 if grep -q "덮을 수 있는 후보" "$WORK/subset-req.md"; then ok "부분집합 재사용 후보를 짚는다"; else bad "부분집합 후보를 안 짚음"; fi
 if grep -q "order.itemNote" "$WORK/subset-req.md"; then ok "더 오는 값이 무엇인지 알려준다"; else bad "더 오는 값 표시 없음"; fi
 if grep -q "판단은 백엔드 몫" "$WORK/subset-req.md"; then ok "자동으로 묶지 않음을 밝힌다"; else bad "판단 주체 문구 없음"; fi
+
+echo
+echo "[14] 요청서의 입자 — 범위는 폴더, 도메인은 파일 (담당자가 갈린다)"
+# 파생물의 입자는 **출처 문서의 입자**를 따라야 한다. 통짜면 화면 하나만 고쳐도 전체가 낡음이 되어
+# 어디가 낡았는지 알 수 없고, 담당 개발자가 갈리는 경계(사용자 앱/백오피스)도 파일에서 안 보인다.
+mkdir -p "$WORK/split/screens/user/schemas" "$WORK/split/screens/backoffice/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/split/screens/user/schemas/"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/split/screens/backoffice/schemas/"
+mkfront() { printf -- '---\ndoc_type: screen-design\nversion: 1\nrevision: 1\nssot: prose\nmachine:\n  lang: json\n  tag: screendesign.screens\n  schema: schemas/screen-design.v1.schema.json\n---\n'; }
+{ mkfront; cat <<'MD'
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
+```
+MD
+} > "$WORK/split/screens/user/screen-design-user-auth.md"
+{ mkfront; cat <<'MD'
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.mypage.home", "feat": "FEAT.mypage.home", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.mypage.home.load", "action": "내 정보", "target": "server",
+      "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
+```
+MD
+} > "$WORK/split/screens/user/screen-design-user-mypage.md"
+{ mkfront; cat <<'MD'
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.member.list", "feat": "FEAT.member.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.member.list.load", "action": "회원 조회", "target": "server",
+      "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
+```
+MD
+} > "$WORK/split/screens/backoffice/screen-design-backoffice-member.md"
+
+node "$CHECK" "$WORK/split" --emit-interface-request > "$WORK/o.txt" 2>&1
+if [ $? -ne 0 ] && grep -q -- "--scope 가 필요" "$WORK/o.txt"; then ok "범위를 빼면 막는다(권한 섞임 방지)"; else bad "scope 없이도 뽑힘"; fi
+node "$CHECK" "$WORK/split" --emit-interface-request --scope user > "$WORK/o.txt" 2>&1
+if [ $? -ne 0 ] && grep -q -- "--domain 이 필요" "$WORK/o.txt"; then ok "도메인을 빼면 막는다(통짜 방지)"; else bad "domain 없이도 뽑힘"; fi
+if grep -q "auth · mypage" "$WORK/o.txt"; then ok "그 범위의 도메인을 알려준다"; else bad "도메인 안내 없음"; fi
+node "$CHECK" "$WORK/split" --emit-interface-request --scope user --list-domains 2>/dev/null > "$WORK/d.txt"
+if [ "$(cat "$WORK/d.txt" | tr '\n' ' ')" = "auth mypage " ]; then ok "--list-domains 가 뽑을 도메인만 낸다"; else bad "도메인 목록이 다름: $(cat "$WORK/d.txt")"; fi
+
+node "$CHECK" "$WORK/split" --emit-interface-request --scope user --domain auth > "$WORK/req-auth.md" 2>/dev/null
+if [ "$(grep -c '"path": "screens/' "$WORK/req-auth.md")" = "1" ]; then ok "출처가 하나다(낡음 판정이 정확해진다)"; else bad "출처가 여럿"; fi
+if grep -q '"domain": "auth"' "$WORK/req-auth.md"; then ok "블록에 도메인을 밝힌다"; else bad "domain 없음"; fi
+if grep -q "IO.mypage.home.load" "$WORK/req-auth.md"; then ok "묶기 후보는 범위 전체로 계산한다(도메인을 가로지름)"; else bad "다른 도메인 후보가 사라짐"; fi
+if grep -q "(mypage)" "$WORK/req-auth.md"; then ok "상대가 어느 도메인 요청서에 있는지 밝힌다"; else bad "상대 도메인 표시 없음"; fi
+if grep -q "IO.member.list.load" "$WORK/req-auth.md"; then bad "범위를 넘는 묶기를 제안함(권한 경계 침범)"; else ok "범위를 넘는 묶기는 제안하지 않는다"; fi
+if [ "$(grep -c '^| `IO' "$WORK/req-auth.md")" = "1" ]; then ok "요구 표에는 자기 도메인만 담는다"; else bad "남의 도메인 요구가 표에 섞임"; fi
+
+# 옛 배치(통짜) 감지 — 이미 만들어 둔 세트가 새 규칙을 얻는 경로
+mkdir -p "$WORK/split/interface-requests" "$WORK/split/schemas"
+irsrc="$(find "$HERE/../.." -name "interface-request.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$irsrc" ] && cp "$irsrc" "$WORK/split/schemas/"
+cat > "$WORK/split/interface-requests/interface-request-user.md" <<'MD'
+---
+doc_type: interface-request
+version: 1
+ssot: prose
+machine:
+  lang: json
+  tag: interface.requests
+  item: request-list
+  schema: ../schemas/interface-request.v1.schema.json
+---
+```json interface.requests
+{ "generatedAt": "2026-08-01", "scope": "user",
+  "from": [ { "path": "screens/user/screen-design-user-auth.md", "contentHash": "sha256:x" },
+            { "path": "screens/user/screen-design-user-mypage.md", "contentHash": "sha256:y" } ],
+  "requests": [ { "ref": "IO.auth.login.submit", "screen": "FEAT.auth.login", "sends": [], "receives": [] } ] }
+```
+MD
+node "$CHECK" "$WORK/split" > "$WORK/out.txt" 2>&1
+expect_out "옛 배치(통짜) 요청서를 집계해 알려준다" "옛 배치"
+expect_out "무엇을 하라는지 알려준다" "도메인별로 다시 뽑고"
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"

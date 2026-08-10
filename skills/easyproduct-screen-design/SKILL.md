@@ -490,20 +490,37 @@ temp/mockups/{scope}/
 구현 단계의 개발자·에이전트는 그 뒤에 나온 **인터페이스 계약**을 보고 만든다.
 그 파일은 손으로 쓰지 않고 **기계로 생성**한다:
 
-```bash
-node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
-  --emit-interface-request --transport rest --scope user > interface-requests/interface-request-user.md
+**요청서는 화면 설계서와 같은 입자로 갈린다 — 범위별 폴더, 도메인별 파일.** 화면 문서 하나에 요청서 하나다.
+
+```
+interface-requests/{scope}/
+├── interface-request-{scope}-{domain1}.md    ← screen-design-{scope}-{domain1}.md 에서 나옴
+└── interface-request-{scope}-{domain2}.md    ← (서버 동작이 0건인 도메인은 파일을 만들지 않는다)
 ```
 
+```bash
+SET=<문서세트>; CHK=<easyproduct-suite>/scripts/check-docs.mjs
+for d in $(node $CHK $SET --emit-interface-request --scope user --list-domains); do
+  node $CHK $SET --emit-interface-request --scope user --domain "$d" --transport rest \
+    > "$SET/interface-requests/user/interface-request-user-$d.md"
+done
+```
+
+- **`--scope`·`--domain`은 필수다.** 범위를 빼면 사용자 앱과 백오피스 요구가 한 파일에 섞이고, 그러면
+  아래 "묶을 후보"가 **권한 경계를 넘는 묶기**를 제안한다(묶이면 넓은 쪽으로 열려 정보가 샌다).
+  도메인을 빼면 통짜가 되어 **화면 하나만 고쳐도 요청서 전체가 낡음**이 된다 — 어디가 낡았는지 알 수 없다.
+- `--list-domains`는 **서버 요구가 있는 도메인만** 낸다. 없는 도메인은 파일을 만들지 않는다(빈 인계물은 노이즈다).
 - `--transport`는 **희망**을 싣는 것이다(확정 아님). 그 전송이면 백엔드가 채워야 할 규격 자리(`bindingSlots`)가
   함께 나가고, **경로·메서드 값은 지어내지 않는다** — 그건 요구가 아니라 계약이다.
-- `--scope`로 범위를 가른다(사용자 앱 / 백오피스). 화면 설계서가 갈리므로 요청서도 갈린다.
 - 담기는 것: `target`이 서버인 동작의 `id`·화면·동작 이름·보냄/받음·`policies`·`semantics`, 그리고
-  **출처 스냅샷**(그 화면 문서의 `revision`+해시).
+  **출처 스냅샷**(그 화면 문서의 `revision`+해시). 도메인별로 갈렸으니 **출처는 하나**다.
+- **묶기 후보는 범위 전체로 계산하되 자기와 얽힌 것만 싣는다.** 중복은 도메인을 가로질러 생기므로 계산은
+  넓게 해야 하고(도메인 안만 보면 조용히 사라진다), 싣는 것은 좁혀야 도메인 담당자가 남의 목록을 읽지 않는다.
+  상대가 다른 도메인이면 괄호로 어느 요청서에 있는지 밝힌다.
 - **손으로 고치지 않는다.** 화면을 고치고 다시 생성한다. 화면과 어긋나면 화면이 이긴다.
-  출처 스냅샷 덕분에 화면이 개정되면 점검기가 **"요청서가 낡았다"**를 잡는다.
-- **두는 곳은 `interface-requests/`다**(기본값). 범위별로 파일이 갈린다
-  (`interface-requests/interface-request-user.md` · `interface-requests/interface-request-backoffice.md`). 세트 색인에 `role: handoff`로 넣는다.
+  출처 스냅샷 덕분에 화면이 개정되면 점검기가 **"요청서가 낡았다"**를 잡는다 — 그 도메인 파일만 낡는다.
+- **두는 곳은 `interface-requests/{scope}/`다**(기본값). 범위가 폴더인 이유는 **담당 개발자가 갈리는 경계**여서다
+  (사용자 앱 / 백오피스 / 백엔드). 세트 색인에 `role: handoff`로 넣는다.
 - **프로젝트가 다른 위치를 쓰면 그걸 따른다.** 폴더는 관례일 뿐이고 점검기는 **색인(매니페스트)으로 문서를
   발견**하므로 경로가 달라도 그대로 동작한다. 다만 어디에 두든 **색인에 등재해야** 점검·파장 대상이 된다
   (등재를 빠뜨리면 점검기가 "매니페스트에 없는 문서"로 알려 준다).
@@ -524,6 +541,16 @@ node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
    여기서는 비운다. **백엔드 문서가 아직 없으면 `op`를 그대로 두고** 백엔드 설계 때 이관한다.
 
 **이건 구조만 맞춘 것이지 검증 완료가 아니다** — 채운 뒤 풀 리뷰를 이어붙인다.
+
+### 옛 배치(범위 통짜) 인터페이스 요청서 → 도메인별로 다시 뽑기
+
+점검기가 **"옛 배치(범위 통짜) 인터페이스 요청서 n건 — 다시 뽑기 필요"**를 내면(블록에 `domain`이 없거나
+`from`의 출처가 여럿), 아래대로 옮긴다. 요청서는 파생물이라 **다시 뽑는 것이 곧 업그레이드**다.
+
+1. 위 루프로 `interface-requests/{scope}/` 아래 도메인별로 다시 뽑는다.
+2. **옛 통짜 파일을 지운다.** 남겨 두면 같은 요구가 두 곳에 있어 백엔드가 어느 쪽을 볼지 갈린다.
+3. 세트 색인(`00-index.md`)의 항목을 새 경로들로 교체한다(`role: handoff`).
+4. 백엔드 계약이 이미 있으면 `basis`는 손대지 않아도 된다 — `IO.*` 앵커를 가리키지 파일을 가리키지 않는다.
 
 ## 문서를 고칠 때 — `revision` 올리기 (세트 공통 규율)
 
@@ -546,7 +573,7 @@ node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.8.1`
+- **버전**: `0.8.2`
 - **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
