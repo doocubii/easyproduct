@@ -832,10 +832,10 @@ FRAME_OK='{ "id": "FRAME.backoffice.shell", "label": "공통 껍데기",
   "components": ["UI.nav.lnb","UI.nav.topbar"],
   "appliesTo": { "except": ["FEAT.admin.login"] },
   "data": { "display": ["operator.name","operator.role"], "io": [
-    { "id": "IO.frame.shell.session", "action": "세션 운영자 조회", "target": "server",
+    { "id": "IO.backoffice.shell.session", "action": "세션 운영자 조회", "target": "server",
       "sends": [], "receives": ["operator.id","operator.name","operator.role"],
       "semantics": "전 화면 진입 시 일어난다. 응답이 없으면 로그인으로 보낸다." },
-    { "id": "IO.frame.shell.logout", "action": "로그아웃", "target": "server",
+    { "id": "IO.backoffice.shell.logout", "action": "로그아웃", "target": "server",
       "ui": "UI.nav.topbar", "sends": [], "receives": [] } ] } }'
 
 # ⓐ 프레임 블록이 없으면 — 껍데기 동작을 담을 자리가 없다고 알린다
@@ -863,7 +863,7 @@ expect_out "프레임을 등기부에 올린다" "프레임 1"
 node "$CHECK" "$FR" --emit-interface-request --scope backoffice --list-domains 2>/dev/null > "$WORK/d.txt"
 if grep -qx "frame" "$WORK/d.txt"; then ok "요청서 도메인에 frame이 뜬다"; else bad "frame 도메인 없음"; fi
 node "$CHECK" "$FR" --emit-interface-request --scope backoffice --domain frame 2>/dev/null > "$WORK/fr-req.md"
-if grep -q "IO.frame.shell.session" "$WORK/fr-req.md"; then ok "세션 조회가 요청서로 나간다"; else bad "세션 조회가 안 나감"; fi
+if grep -q "IO.backoffice.shell.session" "$WORK/fr-req.md"; then ok "세션 조회가 요청서로 나간다"; else bad "세션 조회가 안 나감"; fi
 if [ "$(grep -c '"path": "screens/' "$WORK/fr-req.md")" = "1" ]; then ok "출처가 index 문서 하나다"; else bad "출처가 여럿"; fi
 expect_file() { if grep -qF -- "$2" "$3"; then ok "$1"; else bad "$1 — 없음: $2"; fi; }
 expect_file "전 화면에 걸린다는 사실을 밝힌다" "걸리는 모든 화면에서" "$WORK/fr-req.md"
@@ -876,6 +876,41 @@ expect_out "프레임 컴포넌트도 인벤토리와 대조한다" "프레임 F
 mkframe "$(printf '%s' "$FRAME_OK" | sed 's/"FEAT.admin.login"/"FEAT.admin.ghost"/')"
 node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
 expect_out "appliesTo의 화면도 대조한다(오타면 가드가 로그인에 남는다)" "appliesTo FEAT.admin.ghost"
+
+# ⓔ 두 범위가 같은 껍데기 이름을 쓴다 — 동작 id에 범위가 없으면 충돌한다(실측 결함).
+#    사용자 앱과 백오피스가 둘 다 껍데기를 `shell`이라 부르므로, `IO.frame.shell.*`처럼 범위를 빼면
+#    양쪽이 같은 id가 되어 요청서·백엔드 basis가 조용히 엉뚱한 동작에 붙는다.
+mkframe "$FRAME_OK"
+mkdir -p "$FR/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$FR/screens/user/schemas/"
+[ -n "$frsrc" ] && cp "$frsrc" "$FR/screens/user/schemas/"
+cat > "$FR/screens/user/screen-design-user-index.md" <<'MD'
+---
+doc_type: screen-design-index
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.frame
+  item: frame-list
+  schema: schemas/screen-design-frame.v1.schema.json
+---
+```json screendesign.frame
+{ "scope": "user", "frames": [ { "id": "FRAME.user.shell", "label": "사용자 앱 껍데기",
+  "components": ["UI.nav.topbar"],
+  "data": { "display": [], "io": [
+    { "id": "IO.user.shell.session", "action": "세션 사용자 조회", "target": "server",
+      "sends": [], "receives": ["operator.id"] } ] } } ] }
+```
+MD
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_no_out "범위가 다르면 같은 껍데기 이름이어도 안 겹친다" "중복 동작 id"
+# 범위를 뺀 옛 표기로 되돌리면 실제로 겹친다 — 그 사실을 고정한다
+sed -i 's/IO.user.shell.session/IO.frame.shell.session/' "$FR/screens/user/screen-design-user-index.md"
+sed -i 's/IO.backoffice.shell.session/IO.frame.shell.session/' "$FR/screens/backoffice/screen-design-backoffice-index.md"
+node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
+expect_out "범위를 빼면 두 범위가 충돌하는 것을 잡는다" "중복 동작 id: IO.frame.shell.session"
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"
