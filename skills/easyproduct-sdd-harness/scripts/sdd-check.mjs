@@ -332,8 +332,15 @@ for (const slug of scopedSlugs) {
 // ─────────────────────────────── ③ 결합 ───────────────────────────────
 
 const changedSet = new Set(changed);
+// 슬러그는 **`specsDir` 바로 다음 마디**다. `split('/')[1]`로 뽑으면 `specsDir`가 한 마디일 때만 맞는데,
+// 모노레포는 `frontend-user/specs`처럼 **두 마디 이상**이 정상이다(`references/monorepo.md`가 그렇게 권한다).
+// 그때 `[1]`은 `"specs"`가 되어 어떤 슬러그와도 안 맞고, ③ 결합이 **항상 발화**한다 —
+// `warn`에서는 소음이지만 `block`으로 졸업하는 순간 **관장 파일을 건드리는 모든 커밋이 막힌다**(실측).
 const sliceChangedDirs = new Set(
-  changed.filter((f) => f.startsWith(`${P.specsDir}/`)).map((f) => f.split('/')[1]).filter(Boolean),
+  changed
+    .filter((f) => f.startsWith(`${P.specsDir}/`))
+    .map((f) => f.slice(P.specsDir.length + 1).split('/')[0])
+    .filter(Boolean),
 );
 
 for (const f of changed) {

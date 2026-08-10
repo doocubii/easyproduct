@@ -127,6 +127,17 @@ function canonicalSchemaPath(basename) {
   canonicalCache.set(basename, hit);
   return hit;
 }
+// 스키마 위반 메시지에 곁들이는 힌트. **규칙을 다시 적지 않고 "무엇을 쓰면 되는지"만** 한 줄로 말한다
+// — 위반 문구는 어디가 틀렸는지는 알려 주지만 무엇이 맞는지는 안 알려 주기 때문이다.
+const ERR_HINTS = [
+  { when: /transientSends\[\d+\](?:\s|$)|transientSends\[\d+\] 타입/,
+    say: '일회성 입력은 `{ "name": "keyword", "desc": "법령명·조문 검색어" }` 꼴이다(문자열 배열이 아니다).' },
+  { when: /transientSends 항목 0 < 최소 1/,
+    say: '없으면 `transientSends` 필드를 아예 두지 않는다(빈 배열은 "생각했는데 없다"와 구분이 안 된다).' },
+  { when: /transientSends\[\d+\]\.desc 누락/,
+    say: '`desc`는 필수다 — 등기부 대조를 안 받는 자리라, 뜻이 없으면 백엔드가 계약을 정할 근거가 없다.' },
+];
+
 const stable = (o) => JSON.stringify(sortDeep(o));   // 서식·키 순서 차이는 무시하고 내용만 비교
 function sortDeep(v) {
   if (Array.isArray(v)) return v.map(sortDeep);
@@ -184,6 +195,10 @@ const args = process.argv.slice(2);
 const printSnapshot = args.includes('--print-snapshot');
 const emitNeeds = args.includes('--emit-needs');
 const emitReq = args.includes('--emit-interface-request');
+// 목록을 5건에서 자르면 **작업 목록을 만들 수가 없다** — 실사용에서 검사기와 같은 판정을 다시 구현했다는
+// 보고가 있었다. 기본 출력은 짧게 두되(리포트가 읽히려면 짧아야 한다) 전부 보는 문을 연다.
+const verbose = args.includes('--verbose');
+const CAP = (n) => (verbose ? n : 5);
 const argVal = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : dflt; };
 const reqTransport = argVal('--transport');
 const reqScope = argVal('--scope');
@@ -192,6 +207,7 @@ const listDomains = args.includes('--list-domains');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
+  console.error('  --verbose        : 목록을 자르지 않고 **전부** 출력(기본은 5건까지)');
   console.error('  --print-snapshot : 리뷰 산출물의 sources에 붙일 (revision·contentHash) 스냅샷을 출력');
   console.error('  --emit-needs     : 화면 동작에서 **서버 요구 목록**을 기계 판독 JSON으로 추출(백엔드 설계의 입력)');
   console.error('  --emit-interface-request --scope <범위> --domain <도메인> [--transport rest|grpc|graphql|ws|queue]');
@@ -228,13 +244,13 @@ if (via === 'manifest') {
   try { unlisted.push(...walkMd('')); } catch { /* 스캔 실패는 무시 */ }
   if (unlisted.length) {
     report(`  ⚠ 매니페스트에 없는 문서 ${unlisted.length}건 — **점검 대상에서 빠졌다**(색인 재생성 필요)`);
-    report(`     ${unlisted.slice(0, 5).join(', ')}${unlisted.length > 5 ? ` 외 ${unlisted.length - 5}건` : ''}`);
+    report(`     ${unlisted.slice(0, CAP(unlisted.length)).join(', ')}${!verbose && unlisted.length > 5 ? ` 외 ${unlisted.length - 5}건 (--verbose로 전부)` : ''}`);
     report('     → 색인(00-index.md)을 다시 만들면 편입된다. `machine.includes`로 딸린 부분 파일은 자동 추적되므로 여기 안 나온다.');
   }
 }
 
 // 레지스트리(anchor 등기부)
-const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set() };
+const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set(), frame: new Set() };
 const groupOrigin = new Map(); // group -> 그 그룹을 정의한 문서 경로(중복 정의 적발용)
 const loaded = []; // {docType, path, md, fm, blocks:[{tag,obj}]} — 기계 블록이 있는 문서만
 const allDocs = []; // {docType, path, revision} — 기계 블록 유무와 무관한 전체(파장·신선도용)
@@ -306,7 +322,13 @@ for (let qi = 0; qi < queue.length; qi++) {
   }
   if (errs.length) problems.push('schema');
   report(`  ${errs.length ? '❌' : '✅'} ${d.path.padEnd(30)} (${fm.doc_type}) 블록:${blocks.length} 위반:${errs.length}`);
-  errs.slice(0, 5).forEach(e => report('       - ' + e));
+  // 스키마 위반은 **경로와 규칙**만 말한다. 모양이 헷갈리는 자리는 한 줄 힌트를 곁들여 왕복을 줄인다
+  // (실사용: `transientSends`를 문자열 배열로 적고 "타입 object 아님"만 받아 무엇을 쓰라는지 알 수 없었다).
+  errs.slice(0, CAP(errs.length)).forEach(e => {
+    report('       - ' + e);
+    for (const h of ERR_HINTS) if (h.when.test(e)) report(`         ↳ ${h.say}`);
+  });
+  if (!verbose && errs.length > 5) report(`       - 외 ${errs.length - 5}건 (--verbose로 전부)`);
   loaded.push({ docType: fm.doc_type, path: d.path, blocks });
 
   // 레지스트리 적재
@@ -314,6 +336,7 @@ for (let qi = 0; qi < queue.length; qi++) {
     if (o.__parseError) continue;
     if (Array.isArray(o.features)) o.features.forEach(f => reg.feat.add(f.id));
     if (Array.isArray(o.screens)) o.screens.forEach(s => reg.screen.add(s.id));
+    if (Array.isArray(o.frames)) o.frames.forEach(f => reg.frame.add(f.id));
     if (Array.isArray(o.rules)) o.rules.forEach(r => reg.pol.add(r.id));
     if (Array.isArray(o.components)) o.components.forEach(c => reg.ui.add(c.id));
     if (Array.isArray(o.scenarios)) o.scenarios.forEach(s => reg.scn.add(s.id));
@@ -336,6 +359,7 @@ for (let qi = 0; qi < queue.length; qi++) {
 const be = { itf: new Set(), store: new Set(), table: new Set(), mod: new Set(), ext: new Set(), authMode: new Set() };
 const screenIo = [];        // {id, screen, action, target, doc}
 const unfetchedDisplay = [];  // 보여준다고 했는데 아무 server 동작도 가져오지 않는 값 {screen, doc, vars}
+const noEntryLoad = [];       // 보여주는데 **진입 로드 자체가 없는** 화면 {screen, doc, shown}
 const beBasis = [];         // {itfId, kind, ref, why, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
@@ -349,6 +373,19 @@ for (const doc of loaded) {
     for (const m of (o.modules || [])) be.mod.add(m.id);
     for (const x of (o.integrations || [])) be.ext.add(x.id);
     for (const a of (o.authModes || [])) be.authMode.add(a.mode);
+    // 프레임 동작(io) — 화면이 아니라 **껍데기**에서 일어나는 요구.
+    // 화면에 억지로 붙이면 그 화면과 운명을 같이하고(실측: GNB 로그아웃이 마이페이지에 귀속),
+    // 안 붙이면 통째로 샌다(실측: 요청서 96건에 세션 조회 없음). 그래서 프레임이 자기 자리를 갖는다.
+    for (const fr of (o.frames || [])) {
+      const dat = (fr.data || {});
+      for (const a of (dat.io || [])) {
+        screenIo.push({ id: a.id || null, screen: fr.id, action: a.action, target: a.target || null,
+                        ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
+                        receives: a.receives || [],
+                        policies: a.policies || [], semantics: a.semantics || null, op: null,
+                        frame: fr.id, appliesTo: fr.appliesTo || null, doc: doc.path });
+      }
+    }
     // 화면 동작(io) — 백엔드 요구의 출처
     for (const s of (o.screens || [])) {
       const dat = Array.isArray(s.data) ? {} : (s.data || {});
@@ -363,6 +400,16 @@ for (const doc of loaded) {
       }
       const unfetched = (dat.display || []).filter((v) => !fetched.has(v) && !fetched.has(String(v).split('.')[0]));
       if (unfetched.length) unfetchedDisplay.push({ screen: s.id, doc: doc.path, vars: unfetched });
+      // **`receives`가 전부 조회인 것은 아니다.** 승인·반려·저장 같은 **변경 동작도 결과를 받는다** —
+      // 그 응답이 화면 값을 덮으면 위 `unfetched`가 0이 되어 **진입 조회가 없는데도 조용히 통과**한다
+      // (실측: 상세 화면 둘이 그렇게 통과해 요청서에 조회가 한 줄도 안 나갔다).
+      // 그래서 두 번째 신호를 따로 낸다 — "보여주는데 **진입 로드로 볼 만한 동작이 하나도 없는** 화면".
+      // 진입 로드의 표식은 0.9.0에서 정한 둘이다: id가 `.load*` · 누르는 것이 아니므로 `ui`가 없다.
+      if ((dat.display || []).length) {
+        const entryish = (dat.io || []).filter((a) => (a.target ? String(a.target).split('.')[0] : null) === 'server'
+          && (/\.load[A-Za-z0-9_-]*$/.test(a.id || '') || !a.ui));
+        if (!entryish.length) noEntryLoad.push({ screen: s.id, doc: doc.path, shown: (dat.display || []).length });
+      }
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
@@ -399,6 +446,36 @@ const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
+    // 프레임: 컴포넌트 → ui 인벤토리, display·io 변수 → 데이터모델, policies → 정책서,
+    //        appliesTo의 화면 → ia.features. 화면 엔트리와 **같은 검사**를 받는다.
+    for (const fr of (o.frames || [])) {
+      const fdat = fr.data || {};
+      for (const c of (fr.components || [])) {
+        if (/^UI\.FEAT\./.test(c)) continue;
+        refChecked++; if (!reg.ui.has(c)) { report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 컴포넌트 ${c} → uicomponents.list에 없음`); dead++; }
+      }
+      const frefs = [...(fdat.display || [])];
+      for (const a of (fdat.io || [])) { for (const v of (a.sends || [])) frefs.push(v); for (const v of (a.receives || [])) frefs.push(v); }
+      for (const dv of frefs) { refChecked++; if (!dataRefOk(dv)) { report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 데이터 ${dv} → 데이터 모델에 없음`); dead++; } }
+      for (const a of (fdat.io || [])) for (const pol of (a.policies || [])) {
+        refChecked++; if (!reg.pol.has(pol)) { report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 정책 ${pol} → policy.rules에 없음`); dead++; }
+      }
+      // 걸리는 범위의 화면이 실재해야 한다. 특히 `except`가 오타면 **로그인 화면이 가드에 걸린 채로 남아**
+      // "로그인하려면 세션이 있어야 한다"는 순환이 조용히 유지된다.
+      const ap = fr.appliesTo || {};
+      if (ap.except && ap.only) { report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 appliesTo에 except와 only가 함께 있음 — 하나만 쓰세요`); dead++; }
+      for (const f of [...(ap.except || []), ...(ap.only || [])]) {
+        refChecked++;
+        if (!reg.feat.has(f) && !reg.screen.has(f)) { report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 appliesTo ${f} → 기능·화면에 없음`); dead++; }
+      }
+      // 일회성 입력이 실재 변수면 `sends` 우회다(화면과 같은 규칙).
+      for (const a of (fdat.io || [])) for (const t of (a.transientSends || [])) {
+        if (t && t.name && dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+          dead++;
+        }
+      }
+    }
     // 화면 설계: feat → ia, 컴포넌트(components + io.ui + bindings.ui) → ui(중앙; 로컬 UI.FEAT.* 는 스킵),
     //           데이터(display + io.sends/receives + bindings.var) → 데이터모델. (구 포맷 s.data 는 display로 호환)
     for (const s of (o.screens || [])) {
@@ -585,7 +662,9 @@ if (emitNeeds) {
     .map((x) => ({
       id: x.id, screen: x.screen, action: x.action, target: x.target,
       ui: x.ui ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
+      ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
       policies: x.policies ?? [], semantics: x.semantics ?? null,
+      ...(x.frame ? { frame: x.frame, appliesTo: x.appliesTo ?? null } : {}),
       doc: x.doc, coveredBy: covered.get(x.id) ?? [],
     }));
   const untargeted = screenIo.filter((x) => !x.target).length;
@@ -619,14 +698,17 @@ if (emitReq) {
     && (x.doc.includes(`/${reqScope}/`) || x.doc.includes(`-${reqScope}-`)));
   // 요청서의 입자는 **출처 화면 문서의 입자**를 따른다 — 화면은 문서가 아니라 문서 안의 절이라
   // `revision`·`contentHash`가 없다. 문서 1개당 요청서 1개여야 "어느 요청서가 낡았나"가 정확해진다.
-  const domainOf = (p) => {
+  // 프레임 동작은 **화면 도메인에 속하지 않는다** — 출처가 index 문서 하나이므로 도메인 `frame`으로 모은다.
+  // (요청서의 입자 규칙 "출처 문서 1개당 요청서 1개"가 그대로 유지된다.)
+  const domainOf = (p, x) => {
+    if (x && x.frame) return 'frame';
     const base = p.split('/').pop().replace(/\.md$/, '');
     const m = new RegExp(`^screen-design-${reqScope}-(.+)$`).exec(base);
     return m ? m[1] : base;
   };
   const byDomain = new Map();
   for (const x of inScope) {
-    const d = domainOf(x.doc);
+    const d = domainOf(x.doc, x);
     if (!byDomain.has(d)) byDomain.set(d, []);
     byDomain.get(d).push(x);
   }
@@ -662,6 +744,9 @@ if (emitReq) {
       receives: x.receives || [],
       ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
       ...(x.semantics ? { semantics: x.semantics } : {}),
+      // 프레임 동작은 **한 화면이 아니라 걸리는 모든 화면에서** 일어난다. 이 표시가 없으면 백엔드가
+      // 개별 화면의 조회로 오해해 호출 빈도·캐시·세션 저장소를 잘못 잡는다.
+      ...(x.frame ? { frame: x.frame, ...(x.appliesTo ? { appliesTo: x.appliesTo } : {}) } : {}),
     })),
   };
   // frontmatter 두 가지에 주의.
@@ -675,14 +760,20 @@ if (emitReq) {
     '---', 'doc_type: interface-request', 'version: 1', 'revision: 1', 'ssot: prose', 'machine:', '  lang: json',
     '  tag: interface.requests', '  item: request-list', '  schema: schemas/interface-request.v1.schema.json',
     '---', '',
-    `# 인터페이스 요청서 — ${reqScope} / ${reqDomain} (${block.generatedAt} 생성)`, '',
+    `# 인터페이스 요청서 — ${reqScope} / ${reqDomain}${reqDomain === 'frame' ? ' (공통 프레임)' : ''} (${block.generatedAt} 생성)`, '',
     '> **프론트가 백엔드에 넘기는 요구 목록입니다.** 화면 설계서의 동작에서 **기계로 생성**했으니 손으로 고치지 마세요 —',
     '> 화면을 고치고 다시 생성하면 됩니다. 이 문서는 SSOT가 아니라 파생물이고, 화면과 어긋나면 **화면이 이깁니다.**',
     reqTransport
       ? `> 전송은 \`${reqTransport}\`를 **희망**합니다(확정 아님 — 백엔드가 정하고, 다르면 사유를 남깁니다). 백엔드가 채울 자리: ${(SLOTS[reqTransport] || []).join(' · ')}`
       : '> 전송 방식은 백엔드가 정합니다.',
-    '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
-    '| 동작 | 화면 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|',
+    '', `요구 ${block.requests.length}건 · 출처 문서 ${fromDocs.length}개`, '',
+    ...(reqDomain === 'frame'
+      ? ['> **이 요청서는 공통 프레임(화면들을 감싸는 껍데기)의 요구입니다.**', '',
+         '> 아래 동작은 한 화면이 아니라 **그 껍데기가 걸리는 모든 화면에서** 일어납니다.',
+         '> 화면 수만큼 불린다고 보고 호출 빈도·캐시·세션 저장소를 정하세요. `appliesTo`에 예외 화면이 있으면',
+         '> 그 화면에서는 일어나지 않습니다(대개 로그인 화면 — 안 빼면 "로그인하려면 세션이 있어야 한다"가 됩니다).', '']
+      : []),
+    '| 동작 | 화면/프레임 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|',
     ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
     '',
     ...(() => {
@@ -696,7 +787,7 @@ if (emitReq) {
       const sub = subsetCandidates(wide).filter((x) => mine.has(x.forNeed) || mine.has(x.reuse)).slice(0, 20);
       // 상대가 어느 도메인 파일에 있는지 붙인다 — 이 목록은 파일 밖을 가리키므로, 어디를 열어야 하는지
       // 말해 주지 않으면 받는 쪽이 찾아 헤맨다.
-      const domOfRef = new Map(wide.map((x) => [x.ref, domainOf(x.doc)]));
+      const domOfRef = new Map(wide.map((x) => [x.ref, domainOf(x.doc, x)]));
       const at = (r) => (mine.has(r) ? '' : ` (${domOfRef.get(r) || '?'})`);
       const mark = (r) => '`' + r + '`' + at(r);
       const lines = [];
@@ -738,8 +829,8 @@ if (screenIo.length) {
     const missed = serverIo.filter((x) => !(x.id && covered.has(x.id)) && !covered.has(`FEAT.${x.screen}#${x.action}`));
     if (missed.length) {
       report(`\n  ⚠ 덮이지 않은 요구 ${missed.length}건 — 서버와 주고받는 동작인데 어느 인터페이스의 basis에도 없음`);
-      for (const m of missed.slice(0, 5)) report(`     · ${m.id || `${m.screen}#${m.action}`} (${m.doc})`);
-      if (missed.length > 5) report(`     · 외 ${missed.length - 5}건`);
+      for (const m of missed.slice(0, CAP(missed.length))) report(`     · ${m.id || `${m.screen}#${m.action}`} (${m.doc})`);
+      if (!verbose && missed.length > 5) report(`     · 외 ${missed.length - 5}건 (--verbose로 전부)`);
     } else {
       report(`\n  ✅ 요구 커버리지: server 동작 ${serverIo.length}건 모두 basis에 담김`);
     }
@@ -750,13 +841,25 @@ if (screenIo.length) {
   if (unfetchedDisplay.length) {
     const n = unfetchedDisplay.reduce((a, x) => a + x.vars.length, 0);
     report(`  ⚠ 보여준다고 했는데 아무 동작도 가져오지 않는 데이터 ${n}건 (화면 ${unfetchedDisplay.length}개) — 조회 요구가 빠졌을 수 있다`);
-    for (const x of unfetchedDisplay.slice(0, 5)) {
+    for (const x of unfetchedDisplay.slice(0, CAP(unfetchedDisplay.length))) {
       report(`     · ${x.screen} — ${x.vars.slice(0, 4).join(', ')}${x.vars.length > 4 ? ` … (${x.vars.length}건)` : ''}`);
     }
-    if (unfetchedDisplay.length > 5) report(`     · 외 화면 ${unfetchedDisplay.length - 5}개`);
+    if (!verbose && unfetchedDisplay.length > 5) report(`     · 외 화면 ${unfetchedDisplay.length - 5}개 (--verbose로 전부)`);
     report('     → 화면 산문의 **"화면에 들어오면 일어나는 일"**을 `io`에 진입 로드로 담으세요(target: server).');
     report('        빠지면 그 화면은 인터페이스 요청서에 한 줄도 안 나가고, 백엔드는 그 조회가 없는 줄 압니다.');
     report('     → 정적 문구·앞 화면에서 받은 값·화면에서 계산하는 값이면 그대로 두고, 산문에 어디서 오는지 한 줄 밝히세요.');
+  }
+  // 위 검사와 **다른 것을 본다.** 위는 "이 값을 아무도 안 가져온다", 이건 "이 화면에 진입 조회가 아예 없다".
+  // 변경 동작의 응답이 값을 덮으면 위는 0이 되지만 이건 그대로 잡힌다 — 실측에서 그 차이가 두 화면을 살렸다.
+  if (noEntryLoad.length) {
+    report(`  ⚠ 데이터를 보여주는데 **진입 로드가 하나도 없는 화면** ${noEntryLoad.length}개 — 조회 요구가 빠졌을 수 있다`);
+    for (const x of noEntryLoad.slice(0, verbose ? noEntryLoad.length : 5)) {
+      report(`     · ${x.screen} — 보여주는 값 ${x.shown}개, 진입 로드 0건 (${x.doc})`);
+    }
+    if (!verbose && noEntryLoad.length > 5) report(`     · 외 ${noEntryLoad.length - 5}개 (--verbose로 전부)`);
+    report('     → 승인·저장 같은 **변경 동작의 응답**은 조회가 아니다. 화면을 열 때 서버에서 가져오는 것을 따로 적으세요.');
+    report('        (`IO.<도메인>.<화면>.load` · `target: server` · `ui` 없음)');
+    report('     → 앞 화면에서 받은 값만 보여주는 화면이면 그대로 두고, 산문에 그 사실을 한 줄 밝히세요.');
   }
   if (untargeted.length) {
     report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);
@@ -778,11 +881,27 @@ if (screenIo.length) {
   }
 }
 
+// 프레임 블록이 없는 index — 껍데기 동작(세션 조회·로그아웃)을 담을 자리가 없다는 뜻이다.
+// 옛 세트에는 이 블록 자체가 없으므로 **업그레이드 신호**이자 상설 신호다.
+{
+  const idxDocs = allDocs.filter((d) => d.docType === 'screen-design-index');
+  const withFrame = new Set(loaded.filter((d) => d.blocks.some((o) => Array.isArray(o.frames))).map((d) => d.path));
+  const bare = idxDocs.filter((d) => !withFrame.has(d.path));
+  if (bare.length) {
+    report(`  ⚠ 공통 프레임 블록이 없는 화면 설계 index ${bare.length}개 — 껍데기 동작이 빠졌을 수 있다`);
+    for (const d of bare.slice(0, CAP(bare.length))) report(`     · ${d.path}`);
+    if (!verbose && bare.length > 5) report(`     · 외 ${bare.length - 5}개 (--verbose로 전부)`);
+    report('     → GNB·LNB·상단바에도 서버와 주고받는 일이 있습니다(세션 조회·로그아웃·워크스페이스 전환).');
+    report('        어느 화면 것도 아니라 지금은 **요청서에 한 줄도 안 나갑니다.** index에 `screendesign.frame` 블록을 채우세요.');
+    report('     → 껍데기에 서버 동작이 정말 없으면 `frames[].data.io: []`로 명시하세요(생각했음을 남깁니다).');
+  }
+}
+
 // 화면 문서가 없는 세트(요청서만 넘겨받은 리포 등)에서도 알려야 하므로 위 화면 검사 밖에 둔다.
 if (oldLayoutReq.length) {
   report(`  ⚠ 옛 배치(범위 통짜) 인터페이스 요청서 ${oldLayoutReq.length}건 — **다시 뽑기 필요**`);
-  for (const p of oldLayoutReq.slice(0, 5)) report(`     · ${p}`);
-  if (oldLayoutReq.length > 5) report(`     · 외 ${oldLayoutReq.length - 5}건`);
+  for (const p of oldLayoutReq.slice(0, CAP(oldLayoutReq.length))) report(`     · ${p}`);
+  if (!verbose && oldLayoutReq.length > 5) report(`     · 외 ${oldLayoutReq.length - 5}건 (--verbose로 전부)`);
   report('     → 요청서는 출처 화면 문서 1개당 1개다. 통짜면 화면 하나만 고쳐도 전체가 낡음이 되어 어디가 낡았는지 모른다.');
   report('     → interface-requests/<범위>/ 아래 도메인별로 다시 뽑고(--scope·--domain), 옛 파일을 지운 뒤 색인을 갱신하세요.');
 }
@@ -865,7 +984,7 @@ report('\n[3] 파장 · 신선도');
       const noRev = allDocs.filter((d) => d.revision == null && !['doc-bundle-index', 'review'].includes(d.docType));
       if (noRev.length) {
         report(`  ⚠ \`revision\`(결정 개정 번호)이 없는 문서 ${noRev.length}개 — **업그레이드 필요**`);
-        report(`     ${noRev.slice(0, 5).map((d) => d.path).join(', ')}${noRev.length > 5 ? ` 외 ${noRev.length - 5}개` : ''}`);
+        report(`     ${noRev.slice(0, CAP(noRev.length)).map((d) => d.path).join(', ')}${!verbose && noRev.length > 5 ? ` 외 ${noRev.length - 5}개 (--verbose로 전부)` : ''}`);
         report('     → 각 문서의 스킬 버전업(gap-fill)으로 `revision: 1`을 채우세요. 없으면 신선도 판정이 해시 단독이라 사소한 편집에도 경고가 뜹니다.');
       }
     }
@@ -905,6 +1024,6 @@ report('\n[3] 파장 · 신선도');
 }
 
 // 결과
-report(`\n등기부: FEAT ${reg.feat.size} · 화면 ${reg.screen.size} · 데이터그룹 ${reg.group.size} · POL ${reg.pol.size} · UI ${reg.ui.size} · SCN ${reg.scn.size} · 토큰 ${reg.token.size}`);
+report(`\n등기부: FEAT ${reg.feat.size} · 화면 ${reg.screen.size} · 프레임 ${reg.frame.size} · 데이터그룹 ${reg.group.size} · POL ${reg.pol.size} · UI ${reg.ui.size} · SCN ${reg.scn.size} · 토큰 ${reg.token.size}`);
 report(problems.length ? `⚠ 문제 ${problems.length}종 발견: ${[...new Set(problems)].join(', ')}` : '✅ 세트 점검 통과');
 process.exit(problems.length ? 1 : 0);

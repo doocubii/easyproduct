@@ -30,7 +30,7 @@
     ],
     "docsAdapter": "generic",
     "anchorRegistry": {
-      "$comment": "idPrefixes가 비면 참조 패턴을 만들 수 없어 ⑤가 통째로 침묵한다. easyproduct 어댑터면 [\"FEAT\",\"DATA\",\"POL\",\"UI\",\"SCN\",\"IO\",\"BEITF\",\"BESTORE\",\"BESCHEMA\",\"BEARCH\"]. 여기 없는 접두사는 '참조인지도 모르는' 상태가 되므로, 검사기가 등기부 밖 접두사를 집계해 보고한다.",
+      "$comment": "idPrefixes가 비면 참조 패턴을 만들 수 없어 ⑤가 통째로 침묵한다. easyproduct 어댑터면 [\"FEAT\",\"DATA\",\"POL\",\"UI\",\"SCN\",\"IO\",\"FRAME\",\"BEITF\",\"BESTORE\",\"BESCHEMA\",\"BEARCH\"]. 여기 없는 접두사는 '참조인지도 모르는' 상태가 되므로, 검사기가 등기부 밖 접두사를 집계해 보고한다.",
       "blockTagField": "machine.tag",
       "idPrefixes": [],
       "genericIdPattern": "REQ-[0-9]+"
