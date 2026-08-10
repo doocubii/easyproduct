@@ -492,7 +492,7 @@ temp/mockups/{scope}/
 
 ```bash
 node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
-  --emit-interface-request --transport rest --scope user > interface-request-user.md
+  --emit-interface-request --transport rest --scope user > interface-requests/interface-request-user.md
 ```
 
 - `--transport`는 **희망**을 싣는 것이다(확정 아님). 그 전송이면 백엔드가 채워야 할 규격 자리(`bindingSlots`)가
@@ -502,7 +502,13 @@ node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
   **출처 스냅샷**(그 화면 문서의 `revision`+해시).
 - **손으로 고치지 않는다.** 화면을 고치고 다시 생성한다. 화면과 어긋나면 화면이 이긴다.
   출처 스냅샷 덕분에 화면이 개정되면 점검기가 **"요청서가 낡았다"**를 잡는다.
-- 세트 색인에는 `role: handoff`로 넣는다(SSOT가 아니라 파생 인계물).
+- **두는 곳은 `interface-requests/`다**(기본값). 범위별로 파일이 갈린다
+  (`interface-requests/interface-request-user.md` · `interface-requests/interface-request-backoffice.md`). 세트 색인에 `role: handoff`로 넣는다.
+- **프로젝트가 다른 위치를 쓰면 그걸 따른다.** 폴더는 관례일 뿐이고 점검기는 **색인(매니페스트)으로 문서를
+  발견**하므로 경로가 달라도 그대로 동작한다. 다만 어디에 두든 **색인에 등재해야** 점검·파장 대상이 된다
+  (등재를 빠뜨리면 점검기가 "매니페스트에 없는 문서"로 알려 준다).
+- **이 파일은 커밋한다.** 파생물이지만 색인(`00-index.md`)과 달리 **다른 팀·다른 리포로 넘기는 대상**이고,
+  백엔드 계약의 `basis`가 이걸 가리키며, 신선도 판정의 기준이 된다. 재생성이 쉬워도 넘긴 그 시점의 것이 남아야 한다.
 
 ## 버전업(gap-fill) — 옛 화면 설계서에 io 세 가지 채우기
 
@@ -540,7 +546,7 @@ node <easyproduct-suite>/scripts/check-docs.mjs <문서세트> \
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.8.0`
+- **버전**: `0.8.1`
 - **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0

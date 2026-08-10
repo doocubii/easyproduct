@@ -54,6 +54,7 @@
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
 | `review` | `review.snapshot` | review.v1 | (없음 — 점검 흔적) | prose |
 | `interface-request` | `interface.requests` | interface-request.v1 | (없음 — `IO.*`를 참조만) | prose |
+> `interface-request`의 관례 경로는 **`interface-requests/interface-request-<범위>.md`**(매니페스트 `role: handoff`). 기계로 생성하는 파생물이지만 **커밋한다** — 다른 팀에 넘기는 산출물이고 신선도 판정의 기준이라 저장소에 남아야 한다.
 | `backend-architecture` | `backend.system` | backend-architecture.v1 | `BEARCH.mod.*`·`BEARCH.ext.*` | prose |
 | `backend-storage` | `backend.stores` | backend-storage.v1 | `BESTORE.<이름>` | prose |
 | `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |

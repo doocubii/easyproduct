@@ -424,8 +424,9 @@ Stage 3.8(화면 설계)이 실행됐을 때만, 그 끝에 한 번 묻는다:
 화면 설계가 끝나면, 백엔드에 넘길 **인터페이스 요청서**를 기계로 생성한다(`easyproduct-screen-design`의
 "인터페이스 요청서 내주기"). 백엔드가 화면 설계서를 직접 뒤지지 않게 하는 **층 분리** 장치다.
 
-- `node scripts/check-docs.mjs <세트> --emit-interface-request [--transport …] [--scope user] > interface-request-<범위>.md`
-- 색인에 `role: handoff`로 넣는다(SSOT 아님 · 재생성 가능한 파생물).
+- `node scripts/check-docs.mjs <세트> --emit-interface-request [--transport …] [--scope user] > interface-requests/interface-request-<범위>.md`
+- **두는 곳은 `interface-requests/`**(기본값). 범위별로 파일이 갈린다. 프로젝트가 다른 위치를 쓰면 그걸 따르되 **색인에 등재**해야 점검·파장 대상이 된다.
+- 색인에 `role: handoff`로 넣는다(SSOT 아님 · 재생성 가능한 파생물). **커밋 대상이다** — 색인과 달리 다른 팀에 넘기는 산출물이라 저장소에 남아야 한다.
 - 화면이 개정되면 점검기가 "요청서가 낡았다"를 잡으므로, 그때 **다시 생성**한다.
 
 ## Stage 3.9: 백엔드 설계 (easyproduct-backend 조율 · 옵트인)
@@ -654,7 +655,7 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.8.0`
+- **버전**: `0.8.1`
 - **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
