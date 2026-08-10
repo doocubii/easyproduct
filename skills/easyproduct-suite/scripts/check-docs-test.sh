@@ -401,5 +401,39 @@ expect_out "중복 동작 id를 잡는다" "중복 동작 id"
 expect_out "어느 동작끼리 겹쳤는지 보여준다" "비밀번호 찾기"
 
 echo
+echo "[12] 같은 데이터를 여러 화면이 쓸 때 — 묶을 후보만 짚고 자동으로 묶지 않는다"
+# 데이터 변수는 참조라 여러 화면이 같은 걸 쓰는 게 정상이다(원본은 데이터 모델 하나).
+# 다만 보내고 받는 것이 똑같은 요구가 여러 화면에 흩어져 있으면 인터페이스 하나로 묶을 후보다.
+mkdir -p "$WORK/same/screens/user" "$WORK/same/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$WORK/same/schemas/"
+cat > "$WORK/same/screens/user/s.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: ../../schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [
+ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+   "data": { "display": [], "bindings": [], "io": [
+     { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+       "sends": ["member.phone"], "receives": ["member.id"] } ] } },
+ { "id": "FEAT.home.main", "feat": "FEAT.home.main", "components": ["UI.x"],
+   "data": { "display": [], "bindings": [], "io": [
+     { "id": "IO.home.main.login", "action": "홈에서 바로 로그인", "target": "server",
+       "sends": ["member.phone"], "receives": ["member.id"] } ] } } ] }
+```
+MD
+node "$CHECK" "$WORK/same" --emit-interface-request > "$WORK/same-req.md" 2>/dev/null
+if grep -q "묶을 후보" "$WORK/same-req.md"; then ok "같은 형태 요구를 묶을 후보로 짚는다"; else bad "묶을 후보를 안 짚음"; fi
+if grep -q "IO.auth.login.submit" "$WORK/same-req.md" && grep -q "IO.home.main.login" "$WORK/same-req.md"; then
+  ok "두 요구가 모두 살아 있다(자동으로 합치지 않는다)"; else bad "요구가 사라짐"; fi
+if grep -q "판단은 백엔드 몫" "$WORK/same-req.md"; then ok "판단 주체를 밝힌다"; else bad "판단 주체 문구 없음"; fi
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

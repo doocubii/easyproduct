@@ -481,6 +481,26 @@ for (const b of beBasis) {
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
 
+// 같은 데이터를 여러 화면이 쓰는 것은 정상이다(변수는 참조일 뿐이고, 원본은 데이터 모델 하나다).
+// 다만 **보내고 받는 것이 똑같은 요구가 여러 화면에 흩어져 있으면** 백엔드에서 인터페이스 하나로
+// 묶을 후보다(`basis`가 배열인 이유). **자동으로 묶지 않는다** — 변수가 같아도 다른 일일 수 있고,
+// 달라도 같은 일일 수 있다. 후보만 짚고 판단은 사람/LLM에 남긴다.
+function sameShapeGroups(list) {
+  const by = new Map();
+  for (const x of list) {
+    const key = JSON.stringify([[...(x.sends || [])].sort(), [...(x.receives || [])].sort()]);
+    if (!by.has(key)) by.set(key, []);
+    by.get(key).push(x);
+  }
+  return [...by.values()]
+    .filter((g) => g.length > 1 && new Set(g.map((x) => x.screen)).size > 1)
+    .map((g) => ({
+      sends: g[0].sends || [], receives: g[0].receives || [],
+      refs: g.map((x) => x.id || `${x.screen}#${x.action}`),
+      screens: [...new Set(g.map((x) => x.screen))],
+    }));
+}
+
 // ── 서버 요구 목록 추출 (--emit-needs) ──
 // 화면 동작(`data.io`)에는 요구가 이미 **구조화돼** 있다 — 방향(target)·보내고 받는 변수(데이터 모델
 // 실재 변수로 검증됨)·트리거 UI·소속 화면. 그래서 "무엇이 서버에 필요한가"의 목록은 **LLM 판단 없이
@@ -511,6 +531,7 @@ if (emitNeeds) {
     note: '화면 동작에서 기계 추출한 서버 요구 목록(읽기 전용 파생물 — 파일로 저장하지 말 것).',
     limits: '`policies`·`semantics`가 비어 있으면 화면 산문에 있는 것을 블록이 안 담은 것일 수 있다(손실 미러) — 그 경우 백엔드가 오류 근거·멱등·정렬을 정할 근거가 없다.',
     untargeted,
+    sameShape: sameShapeGroups(needs),
   }, null, 2));
   process.exit(0);
 }
@@ -557,7 +578,17 @@ if (emitReq) {
     '', `요구 ${block.requests.length}건 · 출처 화면 문서 ${fromDocs.length}개`, '',
     '| 동작 | 화면 | 보냄 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|',
     ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
-    '', '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
+    '',
+    ...(() => {
+      const g = sameShapeGroups(block.requests);
+      return g.length
+        ? ['## 하나로 묶을 후보 (보내고 받는 것이 같은 요구)', '',
+           '> 여러 화면이 같은 데이터를 주고받고 있습니다. 백엔드에서 **인터페이스 하나로 묶을 수 있습니다**',
+           '> (`basis`에 여럿을 적으면 됩니다). **판단은 백엔드 몫**입니다 — 변수가 같아도 다른 일일 수 있습니다.', '',
+           ...g.map((x) => `- ${x.refs.map((r) => '`' + r + '`').join(' · ')} — 보냄 ${x.sends.join(', ') || '—'} / 받음 ${x.receives.join(', ') || '—'}`), '']
+        : [];
+    })(),
+    '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
   ].join('\n');
   console.log(out);
   process.exit(0);
