@@ -275,7 +275,15 @@ for (let qi = 0; qi < queue.length; qi++) {
   if (!machine.tag || !machine.schema) { report(`  · ${d.path.padEnd(30)} (${fm.doc_type}) 기계블록 없음`); continue; }
   const schemaPath = path.resolve(path.dirname(fp), machine.schema);
   let schema; try { schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')); }
-  catch (e) { report(`  ❌ 스키마 로드 실패: ${d.path} → ${machine.schema}`); problems.push('schema'); continue; }
+  // 스키마를 못 읽으면 이 문서의 블록은 `loaded`에 들어가지 못하고, **이후 모든 검사에서 빠진다**
+  // (죽은 링크·커버리지·낡음·옛 배치…). 오류 한 줄만 내면 사람은 "스키마 하나 못 읽었네"로 읽고
+  // 그 뒤가 조용히 통과한 줄 안다. 그래서 **결과를 명시**한다 — 조용한 통과를 만들지 않는다.
+  catch (e) {
+    report(`  ❌ 스키마 로드 실패: ${d.path} → ${machine.schema}`);
+    report(`       → 이 문서의 기계 블록은 **이후 검사에서 전부 제외된다**(죽은 링크·낡음·커버리지 침묵).`);
+    report(`       → 스키마 사본을 문서 옆 \`${path.posix.dirname(machine.schema) || '.'}/\`에 두세요(스킬 자산에서 복사).`);
+    problems.push('schema'); continue;
+  }
   // 사본이 스킬 자산과 다르면 둘 중 하나가 뒤처진 것 → 어느 쪽인지는 사람이 판단한다.
   const canon = canonicalSchemaPath(path.basename(schemaPath));
   if (canon) {
@@ -633,9 +641,15 @@ if (emitReq) {
       ...(x.semantics ? { semantics: x.semantics } : {}),
     })),
   };
-  const rel = (p) => p.split('/').map(() => '..').slice(1).join('/') || '.';
+  // frontmatter 두 가지에 주의.
+  // ① `schema`는 **자기 옆 `schemas/`를 가리키는 상대 경로**다. 세트 루트에서 몇 단계 아래에 두든
+  //    그대로 맞으려면 사본이 문서 옆에 있어야 한다(화면 설계서가 `screens/{scope}/schemas/`를 두는 것과 같은 규칙).
+  //    스킬이 요청서를 낼 때 `interface-requests/<범위>/schemas/`로 스키마를 복사한다.
+  //    ※ 사본이 없으면 점검기가 `❌ 스키마 로드 실패`를 내는데, **그 블록은 이후 검사에서 통째로 빠진다**
+  //      (죽은 링크·낡음·옛 배치 전부 침묵). 경고 뒤의 조용한 통과라 가장 위험하다.
+  // ② `revision`은 생성물이라 **늘 1세대**다. 없으면 점검기가 "업그레이드 필요"로 잡는다.
   const out = [
-    '---', 'doc_type: interface-request', 'version: 1', 'ssot: prose', 'machine:', '  lang: json',
+    '---', 'doc_type: interface-request', 'version: 1', 'revision: 1', 'ssot: prose', 'machine:', '  lang: json',
     '  tag: interface.requests', '  item: request-list', '  schema: schemas/interface-request.v1.schema.json',
     '---', '',
     `# 인터페이스 요청서 — ${reqScope} / ${reqDomain} (${block.generatedAt} 생성)`, '',
