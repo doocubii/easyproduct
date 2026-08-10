@@ -219,6 +219,36 @@ run_regressions() {
   node "$NODE_IMPL" --full >/dev/null 2>&1
   [ $? -eq 0 ] && ok "D warn 모드의 --full은 여전히 exit 0" || bad "D --full이 warn 모드에서 실패함"
   rm -f src/auth/rogue.ts && sed -i 's/"mode": "warn"/"mode": "block"/' sdd-policy.json
+
+  # E: 등기부에 없는 접두사 — 상위 세트가 새 네임스페이스를 얻으면 그 참조는 **검사 밖**이 된다.
+  #    (실제 사고: easyproduct 0.8.0의 `IO`가 idPrefixes에 없어, 검사받던 참조가 검사 안 받는 참조로 바뀌었다)
+  printf -- '- **FR-004**: 로그인 요청 (`IO.auth.login.submit`)\n' >> specs/001-login/spec.md
+  expect "E 등기부에 없는 접두사를 보고한다" \
+    "any('등기부에 없는 접두사' in n and 'IO' in n for n in d.get('notes', []))" -- --full
+  expect "E 위반이 아니라 보고다(오탐 여지)" \
+    "[x for x in v if 'IO.auth.login.submit' in x['message']]==[]" -- --full
+  # F: 매니페스트에 있는데 globs가 안 덮는 상위 문서 — 새 채널 전체가 ④⑥ 밖이 된다.
+  mkdir -p app_docs/interface-requests/user
+  printf -- '---\ndoc_type: interface-request\nversion: 1\n---\n요청서\n' \
+    > app_docs/interface-requests/user/interface-request-user-auth.md
+  cat > app_docs/00-index.md <<'MD'
+---
+doc_type: doc-bundle-index
+version: 1
+---
+```json docbundle.docs
+{ "docs": [
+  { "docType": "interface-request", "path": "interface-requests/user/interface-request-user-auth.md", "role": "handoff" }
+] }
+```
+MD
+  sed -i 's|"app_docs/\*\*/\*.md", ||' sdd-policy.json
+  expect "F 매니페스트에 있는데 글롭이 안 덮는 문서를 보고한다" \
+    "any('안 덮는 상위 문서' in n for n in d.get('notes', []))" -- --full
+  expect "F 어느 종류인지 밝힌다" \
+    "any('interface-request' in n for n in d.get('notes', []))" -- --full
+  git checkout -- sdd-policy.json specs/001-login/spec.md 2>/dev/null || true
+  rm -rf app_docs/interface-requests app_docs/00-index.md
 }
 
 make_fixture generic

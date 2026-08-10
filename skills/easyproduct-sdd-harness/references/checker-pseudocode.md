@@ -190,6 +190,31 @@ function buildAnchorRegistry(policy, adapter):
 > `check-docs.mjs`를 읽거나 import하지 않는다. 어댑터는 "frontmatter가 가리키는 json 블록에서 id를 긁는다"는
 > **일반 절차**일 뿐이다.
 
+#### 정책이 상위 세트를 못 따라간 흔적 — 위반이 아니라 **보고**(note)
+
+`idPrefixes`·`globs`는 프로젝트가 손으로 유지한다. 세트가 새 네임스페이스나 새 폴더를 얻으면 정책이
+뒤처지고, **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고: `IO` 96건). 그래서 두 가지를 센다.
+
+```
+// (가) 등기부에 없는 접두사 — 어댑터와 무관하게 돈다(generic 프로젝트에서도)
+ANCHORISH = \b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])
+for text in specRefs.scanFiles of scopedSlugs:
+  for m in matchAll(text, ANCHORISH):
+    if m.prefix not in idPrefixes: unregistered[m.prefix] += 1
+note: "⑤ 등기부에 없는 접두사 참조: IO(96건) …"   // 오탐 여지(상수·환경변수 표기) → 위반 아님
+
+// (나) 매니페스트에 있는데 globs가 안 덮는 상위 문서 — adapter == "easyproduct"일 때만
+for idx in files matching "**/00-index.md":
+  man = fencedJsonBlockTagged(idx, "docbundle.docs")
+  for d in man.docs where d.role in ("ssot", "handoff"):
+    if not upstreamMatcher(dirname(idx) + d.path): gaps[d.docType] += 1
+note: "④⑥ 매니페스트에 있는데 upstreamDocs.globs가 안 덮는 상위 문서 96건 (interface-request 96)"
+```
+
+> **정책을 매니페스트로 대체하지 않는다.** 정책은 "무엇을 감시하는지"를 사람이 읽을 수 있어야 하고,
+> 런타임에 남의 색인에서 끌어오면 그 성질이 사라진다. **채우는 것은 설치·갱신 때, 어긋남은 매번 보고.**
+> 매니페스트가 없거나 어댑터가 generic이면 **아무 말도 하지 않는다**(대조할 근거가 없다).
+
 ### ⑤ 근거 (grounding)
 
 **참조 패턴에는 가드 두 개가 필수다**(둘 다 실전 오탐에서 나왔다):

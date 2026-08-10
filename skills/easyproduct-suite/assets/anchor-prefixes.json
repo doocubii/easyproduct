@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "easyproduct 세트의 **앵커 접두사 등기부(정본)**. 사람용 표는 references/checker-guide.md의 '앵커 → 어디서 조회하나'.",
+    "이 파일이 있는 이유: 접두사를 새로 만들 때 등기부를 안 늘리면, 하류 도구(SDD 하네스 등)는 그 참조를",
+    "**참조인지도 모른다**. 실제 사고 — 0.8.0에서 `IO`를 1급 앵커로 만들면서 여기 안 넣었고, 프로젝트가",
+    "손으로 유지하던 sdd-policy의 idPrefixes에서도 빠져 **검사받던 참조가 검사 안 받는 참조로 바뀌었다**.",
+    "**새 접두사를 도입하면 이 파일을 반드시 갱신한다.** skill-lint가 하네스 어댑터 기본값과 대조해 드리프트를 막는다."
+  ],
+  "prefixes": [
+    { "prefix": "FEAT", "owner": "ia", "what": "기능·화면", "block": "ia.features / screendesign.screens" },
+    { "prefix": "DATA", "owner": "data-model", "what": "데이터 그룹", "block": "datamodel.group" },
+    { "prefix": "POL", "owner": "policy", "what": "정책 규칙", "block": "policy.rules" },
+    { "prefix": "UI", "owner": "ui-components", "what": "UI 컴포넌트", "block": "uicomponents.list" },
+    { "prefix": "SCN", "owner": "scenario", "what": "시나리오", "block": "scenario.trace" },
+    { "prefix": "IO", "owner": "screen-design", "what": "화면의 동작(진입 로드·사용자 동작)", "block": "screendesign.screens 의 data.io[].id" },
+    { "prefix": "BEITF", "owner": "backend-interface", "what": "백엔드 인터페이스 계약", "block": "backend.interfaces" },
+    { "prefix": "BESTORE", "owner": "backend-storage", "what": "저장소", "block": "backend.stores" },
+    { "prefix": "BESCHEMA", "owner": "backend-schema", "what": "논리 테이블", "block": "backend.tables" },
+    { "prefix": "BEARCH", "owner": "backend-architecture", "what": "시스템 조각·외부 연동", "block": "backend.system" }
+  ],
+  "unprefixed": [
+    { "kind": "데이터 필드", "form": "<group>.<field>", "why": "사람용 표 가독성을 위해 접두사를 붙이지 않는다. `<X>.<Y>`에서 X가 datamodel.group의 그룹 이름과 같으면 데이터 필드로 해석한다." },
+    { "kind": "디자인 토큰", "form": "color.* · spacing.* · radius.* · type.*", "why": "`machine.namespace: token`. 카테고리 이름이 곧 접두사라 대문자 접두사를 두지 않는다." }
+  ]
+}

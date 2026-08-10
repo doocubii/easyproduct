@@ -22,7 +22,7 @@
 | `machine.tag` | 기계블록 있으면 ✅ | info-string (아래) | 이 tag를 info-string으로 가진 fenced 코드블록만 "공식 기계 표현"이다. 추측하지 말고 이 tag로 찾는다. |
 | `machine.item` | – | 설명용 라벨 | 블록 1개의 단위(group / feature-list 등). 정보성. |
 | `machine.schema` | 기계블록 있으면 ✅ | 상대경로 | 그 문서 옆 `./schemas/*.json`. 기계 블록을 이 JSON Schema로 검증. |
-| `machine.namespace` | – | `DATA`/`FEAT`/`POL`/`UI`/`SCN`/`token` | 이 문서가 소유·발행하는 anchor의 접두사. |
+| `machine.namespace` | – | 아래 **앵커 접두사 등기부**의 값 | 이 문서가 소유·발행하는 anchor의 접두사. **접두사를 새로 만들면 이 등기부에 반드시 넣는다** — 등기부 밖 접두사는 하네스 같은 하류 도구가 "참조인지도 모르는" 상태가 된다(실제 사고: `IO`를 1급 앵커로 만들면서 여기 안 넣어, 프로젝트가 손으로 유지하던 `idPrefixes`에서도 빠졌고 **검사받던 참조가 검사 안 받는 참조로 바뀌었다**). |
 | `machine.includes` | – | 경로 배열 `[a, b]` | **이 문서가 여러 파일로 나뉘어 있을 때 그 부분 파일들.** 점검자는 이 경로를 **반드시 따라가** 부분 파일도 점검 대상에 넣는다 — 부분 파일이 **세트 폴더 밖에 있어도** 된다. 이 선언이 "이 문서가 무엇으로 이루어졌는가"의 **정본**이며, 폴더 위치·매니페스트에 기대지 않는다. 없으면 단일 파일(기본). |
 
 - **`machine.*`가 없는 frontmatter**: 그 문서는 기계 블록이 없는 **식별 전용**(예: `plan`·`terms-privacy`·`screen-design-index`). 점검자는 `doc_type`만 읽고 스키마 검증은 건너뛴다.
@@ -79,6 +79,10 @@
 | `BESCHEMA.<테이블>` | 논리 테이블 | `backend.tables`의 `tables[].id` |
 | `BEARCH.mod.*` / `BEARCH.ext.*` | 시스템 조각 / 외부 연동 | `backend.system`의 `modules[].id` / `integrations[].id` |
 | `IO.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
+
+> **이 표가 앵커 접두사 등기부다.** 기계 판독 정본은 `assets/anchor-prefixes.json`이고, 이 표는 그 사람용 표현이다.
+> **새 접두사를 도입하면 둘 다 갱신한다** — 등기부 밖 접두사는 하류 도구(SDD 하네스 등)가 "참조인지도 모르는"
+> 상태가 되어, **검사받던 참조가 조용히 검사 밖으로 나간다**(0.8.0의 `IO`가 실제로 그랬다).
 
 > **데이터 필드만 접두사가 없다**(`user.email`처럼). 규칙: `<X>.<Y>` 꼴이고 `X`가 `datamodel.group`의 어떤 그룹 로컬 이름과 같으면 데이터 필드로 해석한다. (그룹 anchor는 `DATA.` 접두사가 붙지만 필드는 안 붙인다 — 사람용 표 가독성 유지 결정.)
 

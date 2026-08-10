@@ -152,6 +152,40 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   notes.push('check-docs.mjs 있음(SW 3종 자산).');
 }
 
+// E: 앵커 접두사 등기부가 두 곳에서 따로 자라지 않는가.
+// 세트가 접두사를 늘렸는데 하네스의 easyproduct 어댑터 기본값이 안 따라오면, 그 접두사 참조는
+// 하네스에서 **"참조인지도 모르는"** 상태가 된다 — 검사받던 참조가 조용히 검사 밖으로 나간다
+// (0.8.0의 `IO`가 실제로 그랬다). 스킬 간 파일 참조는 최소화하는 원칙이라 하네스가 목록을 **품고**,
+// 대신 여기서 **대조**한다.
+{
+  const canonPath = join(SUITE_DIR, 'assets', 'anchor-prefixes.json');
+  const harnessSkill = join(SKILLS_DIR, 'easyproduct-sdd-harness', 'SKILL.md');
+  if (existsSync(canonPath) && existsSync(harnessSkill)) {
+    let canon = [];
+    try { canon = (JSON.parse(readFileSync(canonPath, 'utf8')).prefixes || []).map((x) => x.prefix); } catch { /* 아래에서 잡힘 */ }
+    if (!canon.length) {
+      errors.push(`${rel(canonPath)}: 앵커 접두사 등기부가 비었거나 읽을 수 없음.`);
+    } else {
+      const text = readFileSync(harnessSkill, 'utf8');
+      const m = /idPrefixes[^\n]*?\n?\s*`\[([^\]]*)\]`/.exec(text) || /`\[("(?:[A-Z]+)"(?:\s*,\s*"[A-Z]+")*)\]`/.exec(text);
+      const listed = m ? [...m[1].matchAll(/"([A-Z][A-Z0-9]*)"/g)].map((x) => x[1]) : null;
+      if (!listed) {
+        errors.push(`${rel(harnessSkill)}: easyproduct 어댑터의 idPrefixes 기본값 목록을 못 찾음(등기부 대조 불가).`);
+      } else {
+        const missing = canon.filter((p2) => !listed.includes(p2));
+        const extra = listed.filter((p2) => !canon.includes(p2));
+        if (missing.length || extra.length) {
+          errors.push(`앵커 접두사 등기부 불일치 — ${rel(canonPath)} vs 하네스 어댑터 기본값`
+            + (missing.length ? ` · 하네스에 없음: ${missing.join(', ')}` : '')
+            + (extra.length ? ` · 등기부에 없음: ${extra.join(', ')}` : ''));
+        } else {
+          notes.push(`앵커 접두사 등기부 일치(${canon.length}개) — 하네스 어댑터와 대조됨.`);
+        }
+      }
+    }
+  }
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);

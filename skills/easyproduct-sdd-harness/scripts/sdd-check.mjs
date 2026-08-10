@@ -181,6 +181,7 @@ const P = {
 };
 
 const skipped = [];   // 무엇을 안 봤는지 — 리포트 머리말에 반드시 드러낸다
+const notes = [];     // 위반은 아니지만 **알아야 하는 것**(정책이 세트를 못 따라간 흔적 등)
 const violations = [];
 
 // 브라운필드 `mode: "warn"`은 **완료 게이트(verify·CI) 층에만** 적용한다.
@@ -350,6 +351,34 @@ for (const f of changed) {
 // ─────────────────────────────── ⑥ 역결합 ───────────────────────────────
 
 const upstreamMatcher = makeMatcher(P.upstream.globs ?? []);
+
+// easyproduct 세트의 **색인 매니페스트**와 `upstreamDocs.globs`를 대조한다.
+// 정책은 사람이 읽을 수 있어야 하므로 런타임에 매니페스트로 **대체하지 않는다** — 대신 **어긋남을 보고**한다.
+// 실제 사고: 세트가 새 채널(`interface-requests/`)을 얻었는데 글롭에 없어, 그 채널 전체가 ④⑥ 밖이었다.
+// 문서가 상위 층에 있는지는 `role`로 판정한다(`ssot`=결정이 사는 곳 · `handoff`=다른 팀에 넘기는 계약 갈래).
+function manifestGaps() {
+  if ((P.upstream.docsAdapter ?? 'generic') !== 'easyproduct') return null;
+  const idx = allFiles.filter((f) => f.endsWith('00-index.md'));
+  const out = new Map();          // docType → 안 덮이는 경로 수
+  let seenManifest = false;
+  for (const f of idx) {
+    const m = /```json\s+docbundle\.docs\n([\s\S]*?)```/.exec(readText(f));
+    if (!m) continue;
+    let man; try { man = JSON.parse(m[1]); } catch { continue; }
+    if (!Array.isArray(man.docs)) continue;
+    seenManifest = true;
+    const base = f.replace(/00-index\.md$/, '');
+    for (const d of man.docs) {
+      if (!d || !d.path) continue;
+      if (d.role !== 'ssot' && d.role !== 'handoff') continue;
+      const full = (base + d.path).replace(/\\/g, '/');
+      if (upstreamMatcher(full)) continue;
+      const k = d.docType || '(unknown)';
+      out.set(k, (out.get(k) || 0) + 1);
+    }
+  }
+  return seenManifest ? out : null;
+}
 const upstreamChanged = changed.filter((f) => upstreamMatcher(f) && !exemptOnlyFiles.has(f));
 
 // 훅(--changed)에서도 경고로는 본다 — severity는 sev()가 낮춘다.
@@ -487,6 +516,23 @@ function refPattern() {
   return null;
 }
 
+// **등기부에 없는 접두사** 감지. 이 하네스의 가장 조용한 사각이다 — `idPrefixes`에 없는 접두사는
+// refPattern이 아예 안 만들어서, 그런 참조는 **죽은 링크로도 안 잡히고 근거로도 안 세어진다.**
+// 상위 문서 세트가 새 네임스페이스를 얻으면(예: easyproduct 0.8.0의 `IO`) 프로젝트가 정책을 고칠 때까지
+// **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고). 그래서 "참조처럼 생긴 것"을 따로 훑어
+// 등록 안 된 접두사를 집계한다. 오탐이 있을 수 있으므로(상수·환경변수 표기) **위반이 아니라 보고**다.
+const ANCHORISH = /\b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])/g;
+function unregisteredPrefixes(texts, known) {
+  const seen = new Map();
+  const knownSet = new Set(known);
+  for (const t of texts) for (const m of t.matchAll(ANCHORISH)) {
+    const pfx = m[1];
+    if (knownSet.has(pfx)) continue;
+    seen.set(pfx, (seen.get(pfx) || 0) + 1);
+  }
+  return [...seen.entries()].sort((a, b) => b[1] - a[1]);
+}
+
 // 건너뛴 와일드카드 참조를 **세어서 리포트에 드러낸다**(무엇을 안 봤는지 숨기지 않는다).
 function wildcardPattern() {
   const prefixes = P.upstream.anchorRegistry?.idPrefixes ?? [];
@@ -570,6 +616,24 @@ if (opts.mode === 'changed') {
   if (wildcardSkipped > 0) {
     skipped.push(`⑤ 와일드카드 참조 ${wildcardSkipped}건 건너뜀(\`FEAT.x.*\` 같은 계열 표기 — 특정 ID가 아니라 대조 대상 아님)`);
   }
+  // 등기부에 없는 접두사 — 위반이 아니라 **보고**다(오탐 여지가 있고, 판단은 사람 몫).
+  const prefixes = P.upstream.anchorRegistry?.idPrefixes ?? [];
+  if (prefixes.length) {
+    const texts = [];
+    for (const slug of scopedSlugs) {
+      for (const file of (P.specRefs.scanFiles ?? ['spec.md', 'plan.md'])) {
+        const path = `${P.specsDir}/${slug}/${file}`;
+        if (existsSync(join(ROOT, path))) texts.push(readText(path));
+      }
+    }
+    const unreg = unregisteredPrefixes(texts, prefixes);
+    if (unreg.length) {
+      notes.push(`⑤ 등기부에 없는 접두사 참조: ${unreg.slice(0, 6).map(([p2, n]) => `${p2}(${n}건)`).join(' · ')}`
+        + (unreg.length > 6 ? ` 외 ${unreg.length - 6}종` : ''));
+      notes.push('     → 상위 문서 세트가 새 네임스페이스를 얻었을 수 있다. `upstreamDocs.anchorRegistry.idPrefixes`에 넣으면 검사받는다.');
+      notes.push('     → 지금은 이 참조들이 **죽은 링크로도 안 잡히고 근거로도 안 세어진다**(검사 밖).');
+    }
+  }
 }
 
 // ─────────────────────────────── ⑦ 리뷰 기록 ───────────────────────────────
@@ -611,10 +675,23 @@ const counts = { block: 0, warn: 0 };
 for (const v of violations) counts[v.severity] = (counts[v.severity] ?? 0) + 1;
 const ok = counts.block === 0;
 
+// 매니페스트 대조(easyproduct 어댑터일 때만). 위반이 아니라 **보고** — 정책을 사람이 고치게 한다.
+{
+  const gaps = manifestGaps();
+  if (gaps === null) {
+    // 어댑터가 generic이거나 매니페스트가 없다 — 대조할 근거가 없으므로 아무 말도 하지 않는다.
+  } else if (gaps.size) {
+    const total = [...gaps.values()].reduce((a, b) => a + b, 0);
+    notes.push(`④⑥ 매니페스트에 있는데 upstreamDocs.globs가 안 덮는 상위 문서 ${total}건`
+      + ` (${[...gaps.entries()].map(([k, v]) => `${k} ${v}`).join(' · ')})`);
+    notes.push('     → 그 문서들은 상위 변경 감지(⑥)·신선도(④) 밖이다. globs에 그 폴더를 더하세요.');
+  }
+}
+
 if (opts.json) {
   console.log(JSON.stringify({
     ok, mode: opts.mode, adapter: P.upstream.docsAdapter ?? 'generic',
-    policyMode: P.mode, skipped, violations, counts,
+    policyMode: P.mode, skipped, notes, violations, counts,
   }, null, 2));
 } else {
   const RULE_LABEL = {
@@ -626,6 +703,7 @@ if (opts.json) {
   console.log(`  adapter: ${P.upstream.docsAdapter ?? 'generic'} · impactUnit: ${P.pins.impactUnit ?? 'file'} · 관장 ${governed.length}개 · slug ${scopedSlugs.length}개(태그 ${usedSlugs.size}개)`);
   if (P.mode === 'warn') console.log('  mode: warn (브라운필드) — 모든 위반을 경고로 보고하고 종료코드 0');
   for (const s of skipped) console.log(`  skipped: ${s}`);
+  for (const n of notes) console.log(`  ${n.startsWith(' ') ? n : `note: ${n}`}`);
   console.log('');
   for (const v of violations) {
     console.log(`${v.severity === 'block' ? '✗' : '⚠'} [${RULE_LABEL[v.rule] ?? v.rule}] ${v.target}`);
