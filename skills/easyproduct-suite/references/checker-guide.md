@@ -25,7 +25,7 @@
 | `machine.namespace` | – | 아래 **앵커 접두사 등기부**의 값 | 이 문서가 소유·발행하는 anchor의 접두사. **접두사를 새로 만들면 이 등기부에 반드시 넣는다** — 등기부 밖 접두사는 하네스 같은 하류 도구가 "참조인지도 모르는" 상태가 된다(실제 사고: `IO`를 1급 앵커로 만들면서 여기 안 넣어, 프로젝트가 손으로 유지하던 `idPrefixes`에서도 빠졌고 **검사받던 참조가 검사 안 받는 참조로 바뀌었다**). |
 | `machine.includes` | – | 경로 배열 `[a, b]` | **이 문서가 여러 파일로 나뉘어 있을 때 그 부분 파일들.** 점검자는 이 경로를 **반드시 따라가** 부분 파일도 점검 대상에 넣는다 — 부분 파일이 **세트 폴더 밖에 있어도** 된다. 이 선언이 "이 문서가 무엇으로 이루어졌는가"의 **정본**이며, 폴더 위치·매니페스트에 기대지 않는다. 없으면 단일 파일(기본). |
 
-- **`machine.*`가 없는 frontmatter**: 그 문서는 기계 블록이 없는 **식별 전용**(예: `plan`·`terms-privacy`·`screen-design-index`). 점검자는 `doc_type`만 읽고 스키마 검증은 건너뛴다.
+- **`machine.*`가 없는 frontmatter**: 그 문서는 기계 블록이 없는 **식별 전용**(예: `plan`·`terms-privacy`). 점검자는 `doc_type`만 읽고 스키마 검증은 건너뛴다.
 
 ## 기계 블록을 찾는 법
 
@@ -48,7 +48,7 @@
 | `policy` | `policy.rules` | policy.v1 | `POL.<domain>.<rule>` | prose |
 | `terms-privacy` | (없음) | – | – | prose |
 | `screen-design` | `screendesign.screens` | screen-design.v1 | 화면 `FEAT.<d>.<n>[.<화면종류>]` | prose |
-| `screen-design-index` | (없음) | – | – | prose |
+| `screen-design-index` | `screendesign.frame` | screen-design-frame.v1 | `FRAME.<범위>.<이름>` | prose |
 | `ui-components` | `uicomponents.list` | ui-components.v1 | `UI.*` | prose |
 | `scenario` | `scenario.trace` | scenario.v1 | `SCN.<domain>.<name>` | prose |
 | `doc-bundle-index` | `docbundle.docs` | docbundle.v1 | (세트 매니페스트) | table |
@@ -79,6 +79,7 @@
 | `BESCHEMA.<테이블>` | 논리 테이블 | `backend.tables`의 `tables[].id` |
 | `BEARCH.mod.*` / `BEARCH.ext.*` | 시스템 조각 / 외부 연동 | `backend.system`의 `modules[].id` / `integrations[].id` |
 | `IO.<도메인>.<화면>.<동작>` | 화면의 **동작**(io) | `screendesign.screens`의 `data.io[].id` |
+| `FRAME.<범위>.<이름>` | **공통 프레임**(화면들을 감싸는 껍데기) | `screendesign.frame`의 `frames[].id` |
 
 > **이 표가 앵커 접두사 등기부다.** 기계 판독 정본은 `assets/anchor-prefixes.json`이고, 이 표는 그 사람용 표현이다.
 > **새 접두사를 도입하면 둘 다 갱신한다** — 등기부 밖 접두사는 하류 도구(SDD 하네스 등)가 "참조인지도 모르는"
@@ -106,6 +107,18 @@
 화면의 **동작**(`data.io[]`)은 "이 동작이 무엇을 주고받나"이고, **상대는 `target`이 정한다** —
 `server`(서버 통신) · `local`(기기 저장) · `client`(화면 안 상태). **io는 서버 통신 전용이 아니다.**
 
+- **요구는 세 갈래로만 온다.** 이 셋이 닫혀 있어야 조용히 새는 자리가 없다.
+
+  | 어디서 일어나나 | 어디에 적나 |
+  |---|---|
+  | 화면 안에서 | 그 화면의 `data.io` |
+  | **화면들을 감싸는 껍데기에서** | **프레임의 `data.io`**(`screendesign.frame`) |
+  | 화면이 아예 없음(배치·웹훅·정산) | 백엔드 계약의 `basis.kind: ops` + `why` 필수 |
+
+  가운데가 비어 있던 동안 그 요구들은 **양옆으로 흘러넘쳤다** — 화면에 억지로 붙거나(GNB 로그아웃이
+  마이페이지 소속이 됨), 프로젝트의 옛 손저작 문서에 남거나, 그냥 사라졌다. 프레임 동작은 **한 화면이
+  아니라 걸리는 모든 화면에서** 일어나므로 요청서가 그 사실(`frame`·`appliesTo`)을 함께 싣는다 —
+  없으면 백엔드가 개별 조회로 오해해 호출 빈도·캐시·세션 저장소를 잘못 잡는다.
 - **`io`는 "누르는 것"만이 아니다.** 화면 산문의 두 절 — **"화면에 들어오면 일어나는 일"**(진입 로드)과
   **"여기서 할 수 있는 일"**(사용자 동작) — 을 **모두** 미러한다. 진입 로드가 빠지면 그 화면은 요구 수확에서
   통째로 빠지고, 요청서에 **한 줄도 안 나간다**(실측: 화면 52개 중 15개가 그 상태였다).

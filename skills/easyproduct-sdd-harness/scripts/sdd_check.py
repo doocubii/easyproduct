@@ -478,12 +478,16 @@ for slug in scoped_slugs:
 
 # ─────────────────────────────── ③ 결합 ───────────────────────────────
 
+# 슬러그는 **specsDir 바로 다음 마디**다. split('/')[1]로 뽑으면 specsDir가 한 마디일 때만 맞는데,
+# 모노레포는 'frontend-user/specs'처럼 두 마디 이상이 정상이다(references/monorepo.md가 그렇게 권한다).
+# 그때 [1]은 'specs'가 되어 어떤 슬러그와도 안 맞고, ③ 결합이 항상 발화한다 —
+# warn에서는 소음이지만 block으로 졸업하는 순간 관장 파일을 건드리는 모든 커밋이 막힌다(실측).
 slice_changed_dirs = set()
 for f in CHANGED:
     if f.startswith(P['specsDir'] + '/'):
-        parts = f.split('/')
-        if len(parts) > 1 and parts[1]:
-            slice_changed_dirs.add(parts[1])
+        rest = f[len(P['specsDir']) + 1:].split('/')[0]
+        if rest:
+            slice_changed_dirs.add(rest)
 
 for f in CHANGED:
     if not is_governed(f) or f in EXEMPT_ONLY:
