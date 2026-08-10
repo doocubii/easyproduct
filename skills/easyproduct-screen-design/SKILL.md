@@ -495,11 +495,21 @@ temp/mockups/{scope}/
 ```
 interface-requests/{scope}/
 ├── interface-request-{scope}-{domain1}.md    ← screen-design-{scope}-{domain1}.md 에서 나옴
-└── interface-request-{scope}-{domain2}.md    ← (서버 동작이 0건인 도메인은 파일을 만들지 않는다)
+├── interface-request-{scope}-{domain2}.md    ← (서버 동작이 0건인 도메인은 파일을 만들지 않는다)
+└── schemas/interface-request.v1.schema.json  ← 스킬 자산 복사 (필수 — 아래)
 ```
+
+> **스키마 사본을 요청서 옆에 둔다(빠뜨리면 조용히 새는 자리).** 생성물의 frontmatter는
+> `schema: schemas/interface-request.v1.schema.json` — **자기 옆 `schemas/`**를 가리킨다
+> (화면 설계서가 `screens/{scope}/schemas/`를 두는 것과 같은 규칙이라, 폴더를 어디로 옮겨도 맞는다).
+> 사본이 없으면 점검기가 `❌ 스키마 로드 실패`를 내는데, **그 블록은 이후 검사에서 통째로 빠진다** —
+> 요구 `ref`·데이터·정책의 죽은 링크도, 낡음 판정도, 옛 배치 감지도 하나도 돌지 않는다.
+> 경고 한 줄 뒤에 오는 것이 **조용한 통과**라, 요청서를 처음 내는 범위에서는 이 복사를 먼저 한다.
 
 ```bash
 SET=<문서세트>; CHK=<easyproduct-suite>/scripts/check-docs.mjs
+mkdir -p "$SET/interface-requests/user/schemas"
+cp <스킬>/schemas/interface-request.v1.schema.json "$SET/interface-requests/user/schemas/"
 for d in $(node $CHK $SET --emit-interface-request --scope user --list-domains); do
   node $CHK $SET --emit-interface-request --scope user --domain "$d" --transport rest \
     > "$SET/interface-requests/user/interface-request-user-$d.md"
@@ -519,6 +529,10 @@ done
   상대가 다른 도메인이면 괄호로 어느 요청서에 있는지 밝힌다.
 - **손으로 고치지 않는다.** 화면을 고치고 다시 생성한다. 화면과 어긋나면 화면이 이긴다.
   출처 스냅샷 덕분에 화면이 개정되면 점검기가 **"요청서가 낡았다"**를 잡는다 — 그 도메인 파일만 낡는다.
+- **재생성은 그 범위 폴더의 생성물 전체를 대상으로 한다.** 도메인이 사라지거나 그 도메인의 서버 동작이
+  0건이 되면 파일이 안 나오는데, **그때 옛 파일을 지운다.** 안 지우면 사라진 요구가 영원히 남아 백엔드가
+  없는 화면의 인터페이스를 만든다. 단 **지운 목록을 반드시 보고한다** — 조용히 지우면 파일 유실과 구분되지 않는다.
+  `schemas/`와 **생성물이 아닌 파일은 건드리지 않는다.**
 - **두는 곳은 `interface-requests/{scope}/`다**(기본값). 범위가 폴더인 이유는 **담당 개발자가 갈리는 경계**여서다
   (사용자 앱 / 백오피스 / 백엔드). 세트 색인에 `role: handoff`로 넣는다.
 - **프로젝트가 다른 위치를 쓰면 그걸 따른다.** 폴더는 관례일 뿐이고 점검기는 **색인(매니페스트)으로 문서를
@@ -573,7 +587,7 @@ done
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.8.2`
+- **버전**: `0.8.3`
 - **릴리즈 날짜**: 2026-08-10
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
