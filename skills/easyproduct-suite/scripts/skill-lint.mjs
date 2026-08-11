@@ -186,6 +186,30 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   }
 }
 
+// F: 개정 축(`revision`) 정의가 두 스킬에서 갈리지 않는가.
+// suite는 `version`=payload 계약 / `revision`=결정 개정으로 정의하는데, 하네스가 그걸 모르면
+// "상위 문서의 version을 먼저 올려라"라고 **오지시**하고 스키마 계약 버전이 오염된다(실측).
+// 하네스는 easyproduct 없이도 도는 것이 설계라 파일을 참조하지 않는다 — 대신 여기서 **대조**한다.
+{
+  const harnessDir = join(SKILLS_DIR, 'easyproduct-sdd-harness');
+  if (existsSync(harnessDir)) {
+    const files = ['scripts/sdd-check.mjs', 'scripts/sdd_check.py', 'references/checker-pseudocode.md',
+                   'assets/project-readme.template.md', 'assets/upstream-check.template.md',
+                   'assets/sources.template.json'];
+    const missing = files.filter((f) => {
+      const fp = join(harnessDir, f);
+      return existsSync(fp) && !readFileSync(fp, 'utf8').includes('revision');
+    });
+    if (missing.length) {
+      errors.push(`easyproduct-sdd-harness가 \`revision\`(결정 개정 축)을 모름 — ${missing.join(', ')}`
+        + ' · suite는 `version`=payload 계약 / `revision`=결정 개정으로 정의한다. 하네스가 `version`을'
+        + ' 문서 수정 카운터로 쓰면 스키마 계약 버전을 오염시키는 오지시가 된다.');
+    } else {
+      notes.push('개정 축 정의 일치 — 하네스가 `revision`을 안다.');
+    }
+  }
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);

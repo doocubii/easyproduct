@@ -136,6 +136,7 @@ function extractBlocks(md, tag) {
 const SKILLS_ROOT = path.resolve(new URL('.', import.meta.url).pathname, '../..');
 const canonicalCache = new Map();
 const schemaCopyUnchecked = new Set();  // 스킬 자산을 못 찾아 사본 일치를 못 본 스키마들
+const versionDrift = [];  // frontmatter version이 스키마 계약 버전과 다름(문서 수정 카운터로 오해한 흔적)
 function canonicalSchemaPath(basename) {
   if (canonicalCache.has(basename)) return canonicalCache.get(basename);
   let hit = null;
@@ -309,6 +310,19 @@ for (let qi = 0; qi < queue.length; qi++) {
     const abs = path.resolve(path.dirname(fp), rel);
     queue.push({ path: path.relative(root, abs).replace(/\\/g, '/'), abs, viaInclude: d.path });
   }
+  // `version`은 **payload 계약(스키마) 버전**이라 내용이 바뀌어도 안 올라간다. 그런데 그게 지켜지는지
+  // 보는 층이 없어, 문서 수정 카운터로 오해해 올린 값(`version: 13`)이 v1 스키마 문서에 박혀도 침묵했다
+  // (실측: SDD 하네스가 "상위 문서의 version을 먼저 올려라"라고 오지시했고 그대로 오염됐다).
+  // 파일명의 `.v<N>`이 그 문서가 쓰는 계약 버전이므로 둘을 대조한다.
+  {
+    const m = /\.v([0-9]+)\.schema\.json$/.exec(String(machine.schema || ''));
+    const declared = fm.version != null ? String(fm.version).trim() : null;
+    if (m && declared && declared !== m[1]) {
+      report(`  ❌ ${d.path}: version ${declared} != 스키마 계약 v${m[1]}`);
+      versionDrift.push({ path: d.path, declared, want: m[1], revision: fm.revision ?? null });
+      problems.push('schema');
+    }
+  }
   if (!machine.tag || !machine.schema) { report(`  · ${d.path.padEnd(30)} (${fm.doc_type}) 기계블록 없음`); continue; }
   const schemaPath = path.resolve(path.dirname(fp), machine.schema);
   let schema; try { schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')); }
@@ -477,6 +491,19 @@ function dataRefOk(ref) {
 }
 
 // 2차: 크로스도큐먼트 참조 무결성
+// `version`을 문서 수정 카운터로 오해한 흔적 — **이행 안내를 함께** 낸다(그냥 1로 되돌리면 SDD 핀이 깨진다).
+if (versionDrift.length) {
+  report(`\n  ⚠ \`version\`이 스키마 계약과 다른 문서 ${versionDrift.length}개 — **이행 필요**`);
+  for (const x of versionDrift.slice(0, CAP(versionDrift.length))) {
+    report(`     · ${x.path} — version ${x.declared} (계약 v${x.want}${x.revision != null ? ` · revision ${x.revision}` : ' · revision 없음'})`);
+  }
+  if (!verbose && versionDrift.length > 5) report(`     · 외 ${versionDrift.length - 5}개 (--verbose로 전부)`);
+  report('     → `version`은 **payload 계약(스키마) 버전**이다. 문서를 고쳤다고 올리지 않는다 —');
+  report('        결정이 바뀐 것은 `revision`으로 나타낸다(다른 축이다).');
+  report('     → SDD 하네스를 함께 쓴다면 **핀부터 재생성한 뒤** version을 계약 값으로 되돌리세요.');
+  report('        순서를 뒤집으면(먼저 되돌리면) 슬라이스 핀이 한꺼번에 깨집니다.');
+}
+
 // 무엇을 안 봤는지 밝힌다 — 조용한 생략은 "봤는데 문제없음"으로 읽힌다.
 if (schemaCopyUnchecked.size) {
   report(`  · 스키마 사본 일치를 **확인하지 못함** ${schemaCopyUnchecked.size}종(${[...schemaCopyUnchecked].join(', ')})`);

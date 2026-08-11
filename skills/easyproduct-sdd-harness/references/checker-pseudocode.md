@@ -137,15 +137,21 @@ if upstreamChanged ≠ ∅ and sliceChanged == ∅ and not allExemptByTrailer(up
 ```
 for slug in usedSlugs:
   pins = readPins(policy.specsDir/slug/policy.requiredPinFile) + readPins(policy.pins.globalPinFile)
-  for pin in pins:                                  // pin = { path, version?, contentHash?, anchors? }
-    cur = readVersion(pin.path, policy)             // §4
-    if pin.version and cur.version and pin.version != cur.version:
-      VIOLATION("freshness", slug, pin.path + " 핀(" + pin.version + ") != 현재(" + cur.version + ")",
+  for pin in pins:                                  // pin = { path, revision?, version?, contentHash?, anchors? }
+    cur = readVersion(pin.path, policy)             // §4 — 축(axis)을 함께 돌려준다
+    pinAxis = (cur.axis == "revision") ? (pin.revision ?? pin.version) : pin.version   // 옛 핀 호환
+    if pinAxis and cur.value and pinAxis != cur.value:
+      // **진짜 할 일** — 결정이 개정됐다.
+      VIOLATION("freshness", slug, pin.path + " 개정됨(" + cur.axis + " " + pinAxis + "→" + cur.value + ")",
                 action: "SDD로 재검토하고 핀을 갱신하라")
     else if pin.contentHash and pin.contentHash != cur.hash:
-      // 버전은 같은데 내용이 바뀐 경우 — 상위 쪽 규율 위반
-      VIOLATION("freshness", slug, pin.path + "가 버전업 없이 수정됨(핀 hash 불일치)",
-                action: "상위 문서의 version을 올리고, 재검토 후 슬라이스 핀을 갱신하라")
+      // 개정 축은 그대로인데 내용이 바뀐 경우 — 문구 손질이거나, 개정인데 번호를 안 올린 것.
+      // **FIX 문구는 축에 따라 갈린다.** easyproduct 문서에 "version을 올려라"라고 하면
+      // **스키마 계약 버전을 오염시키는 오지시**가 된다(실측: v1 문서에 version: 13이 박혔다).
+      VIOLATION("freshness", slug, pin.path + "가 핀 이후 수정됨(" + cur.axis + " 그대로 · 내용 해시 불일치)",
+                action: (cur.axis == "revision")
+                  ? "내용을 확인하고 핀을 갱신하라. 결정이 바뀐 것이면 상위 문서의 revision을 올린다 — version은 payload 계약(스키마) 버전이라 올리지 않는다."
+                  : "상위 문서의 version을 올리고, 재검토 후 슬라이스 핀을 갱신하라")
     if adapter == "easyproduct" and pin.anchors:
       // 앵커 단위 영향: 바뀐 앵커를 핀한 슬라이스만 stale로 좁힌다(정밀도)
       changedAnchors = diffAnchors(pin.path, pin.contentHash)     // 실패하면 파일 단위로 폴백
@@ -157,14 +163,22 @@ for slug in usedSlugs:
 ```
 function readVersion(path, policy):
   text = read(path)                                  // 없으면 VIOLATION("freshness", …, "핀 대상 파일 없음")
-  version = frontmatterField(text, "version")
-         ?? semverAfter(text, policy.sources.semverLine)      // 예: "**Version**: 1.2.0"
-         ?? null
-  hash    = sha256(normalizeEol(text))               // 항상 계산한다(폴백이 아니라 병기)
-  return { version, hash }
+  // **개정 축은 상위 문서 계열마다 다르다.**
+  //   easyproduct : `revision`(결정 개정 번호). frontmatter의 `version`은 **payload 계약(스키마) 버전**이라
+  //                 내용이 바뀌어도 안 올라간다 — 개정 축으로 쓰면 안 된다.
+  //   generic     : 문서 자체의 버전 표식(헌법의 "**Version**: 1.2.0" 등).
+  axis  = (policy.upstreamDocs.docsAdapter == "easyproduct") ? "revision" : "version"
+  value = (axis == "revision") ? frontmatterField(text, "revision")
+                               : frontmatterField(text, "version")
+  value = value ?? semverAfter(text, policy.sources.semverLine) ?? null
+  hash  = sha256(normalizeEol(text))                 // 항상 계산한다(폴백이 아니라 병기)
+  return { axis, value, hash }
 ```
 
-- **해시는 폴백이 아니라 상시 기록**이다. 버전을 가진 문서도 "버전업 없이 수정"을 잡아야 하기 때문.
+- **해시는 폴백이 아니라 상시 기록**이다. 개정 축을 가진 문서도 "번호를 안 올리고 고친 것"을 잡아야 하기 때문.
+- **축을 잘못 잡으면 경고가 소음이 된다.** easyproduct 문서에서 `version`을 축으로 쓰면 그 값은 사실상
+  안 변하므로 ④가 **항상 해시 갈래로 떨어지고**, "결정 개정"과 "문구 손질"이 한 덩어리가 된다
+  (실측: 경고 60건 중 실제 요구 변화는 0건이었다).
 - 전역 원칙 문서(헌법·CLAUDE·AGENTS)는 슬라이스마다 핀하지 말고 `policy.pins.globalPinFile` 한 곳에 모은다
   (전역 변경이 모든 슬라이스를 동시에 stale로 만드는 폭풍을 완화).
 
