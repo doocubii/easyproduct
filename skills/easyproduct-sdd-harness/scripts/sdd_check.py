@@ -599,16 +599,25 @@ def parse_frontmatter(text):
 
 
 def read_version(rel):
+    """**"문서가 개정됐다"를 나타내는 축은 상위 문서 계열마다 다르다.**
+      generic    : 문서 자체의 버전 표식(헌법의 `**Version**: 1.0.0` 등) — 올리는 게 맞다.
+      easyproduct: **revision(결정 개정 번호)**이다. frontmatter의 version은 payload 계약(스키마) 버전이라
+                   내용이 바뀌어도 안 올라간다 — 그걸 개정 축으로 쓰면 "version을 올려라"가 오지시가 되고,
+                   실제로 v1 스키마로 검증되는 문서에 version: 13이 박히는 오염이 일어났다(실측)."""
     if not exists(rel):
         return None
     text = read_text(rel)
     fm = parse_frontmatter(text)
-    version = fm.get('version') if isinstance(fm.get('version'), str) else None
+    ep = (P['upstream'].get('docsAdapter') or 'generic') == 'easyproduct'
+    rev = fm.get('revision')
+    revision = str(rev).strip() if rev is not None and str(rev).strip() != '' else None
+    version = revision if ep else (fm.get('version') if isinstance(fm.get('version'), str) else None)
     if not version and P['sources'].get('semverLine'):
         m = re.search(re.escape(P['sources']['semverLine']) + r'\s*`?([0-9]+\.[0-9]+\.[0-9]+[^\s`]*)', text)
         if m:
             version = m.group(1)
-    return {'version': version, 'hash': sha256(text)}
+    return {'version': version, 'hash': sha256(text), 'revision': revision,
+            'axis': 'revision' if ep else 'version'}
 
 
 def read_pins(rel):
@@ -630,13 +639,29 @@ def check_pins(pins, label):
             violate('freshness', label, f"핀 대상 파일이 없음: {pin['path']}",
                     '경로를 고치거나 핀에서 빼라', path=pin['path'])
             continue
-        if pin.get('version') and cur['version'] and pin['version'] != cur['version']:
-            violate('freshness', label, f"{pin['path']} 핀({pin['version']}) != 현재({cur['version']})",
+        # 핀의 개정 축. 옛 핀은 version만 갖고 있으므로 둘 다 본다.
+        if cur['axis'] == 'revision':
+            pin_axis = str(pin['revision']) if pin.get('revision') is not None else pin.get('version')
+        else:
+            pin_axis = pin.get('version')
+        axis_name = 'revision' if cur['axis'] == 'revision' else 'version'
+        if pin_axis and cur['version'] and pin_axis != cur['version']:
+            # **진짜 할 일**: 결정이 개정됐다. 재검토가 필요하다.
+            violate('freshness', label, f"{pin['path']} 개정됨({axis_name} {pin_axis}→{cur['version']})",
                     'SDD로 재검토하고 그 결과를 기록한 뒤 핀을 갱신하라', path=pin['path'])
         elif pin.get('contentHash') and not re.search(r'[<>]', pin['contentHash']) \
                 and pin['contentHash'] != cur['hash']:
-            violate('freshness', label, f"{pin['path']}가 버전업 없이 수정됨(핀 hash 불일치)",
-                    '상위 문서의 version을 먼저 올리고, 재검토 후 슬라이스 핀을 갱신하라', path=pin['path'])
+            # 개정 번호는 그대로인데 내용이 다르다 — 문구·서식 손질이거나, 개정인데 번호를 안 올린 것이다.
+            # 옛 문구는 "상위 문서의 version을 먼저 올리라"고 했는데, easyproduct 문서에서 그건
+            # 스키마 계약 버전을 오염시키는 오지시다. 축 이름을 어댑터에서 받아 말한다.
+            if cur['axis'] == 'revision':
+                fix = ('내용을 확인하고 핀을 갱신하라. **결정이 바뀐 것이면 상위 문서의 `revision`을 올린다** — '
+                       '`version`은 payload 계약(스키마) 버전이라 올리지 않는다.')
+            else:
+                fix = '상위 문서의 version을 먼저 올리고, 재검토 후 슬라이스 핀을 갱신하라'
+            violate('freshness', label,
+                    f"{pin['path']}가 핀 이후 수정됨({axis_name} {pin_axis or '없음'} 그대로 · 내용 해시 불일치)",
+                    fix, path=pin['path'])
 
 
 if P['pins'].get('impactUnit', 'file') == 'anchor':

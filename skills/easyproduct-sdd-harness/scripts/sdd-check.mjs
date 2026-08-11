@@ -416,17 +416,25 @@ function parseFrontmatter(text) {
   return fm;
 }
 
+// **"문서가 개정됐다"를 나타내는 축은 상위 문서 계열마다 다르다.**
+//   generic  : 문서 자체의 버전 표식(헌법의 `**Version**: 1.0.0` 등) — 올리는 게 맞다.
+//   easyproduct: **`revision`(결정 개정 번호)**이다. frontmatter의 `version`은 **payload 계약(스키마) 버전**이라
+//                내용이 바뀌어도 **안 올라간다** — 그걸 개정 축으로 쓰면 "version을 올려라"가 오지시가 되고,
+//                실제로 v1 스키마로 검증되는 문서에 `version: 13`이 박히는 오염이 일어났다(실측).
+// 그래서 어댑터에 따라 축을 갈라 읽는다.
 function readVersion(path) {
   if (!existsSync(join(ROOT, path))) return null;
   const text = readText(path);
   const fm = parseFrontmatter(text);
-  let version = typeof fm.version === 'string' ? fm.version : null;
+  const ep = (P.upstream.docsAdapter ?? 'generic') === 'easyproduct';
+  const revision = fm.revision != null && String(fm.revision).trim() !== '' ? String(fm.revision).trim() : null;
+  let version = ep ? revision : (typeof fm.version === 'string' ? fm.version : null);
   if (!version && P.sources.semverLine) {
     const re = new RegExp(`${escapeRe(P.sources.semverLine)}\\s*\`?([0-9]+\\.[0-9]+\\.[0-9]+[^\\s\`]*)`);
     const m = re.exec(text);
     if (m) version = m[1];
   }
-  return { version, hash: sha256(text) };
+  return { version, hash: sha256(text), revision, axis: ep ? 'revision' : 'version' };
 }
 
 function readPins(file) {
@@ -444,12 +452,23 @@ function checkPins(pins, label) {
       violate('freshness', label, `핀 대상 파일이 없음: ${pin.path}`, '경로를 고치거나 핀에서 빼라', { path: pin.path });
       continue;
     }
-    if (pin.version && cur.version && pin.version !== cur.version) {
-      violate('freshness', label, `${pin.path} 핀(${pin.version}) != 현재(${cur.version})`,
+    // 핀의 개정 축. 옛 핀은 `version`만 갖고 있으므로 둘 다 본다.
+    const pinAxis = cur.axis === 'revision' ? (pin.revision != null ? String(pin.revision) : (pin.version ?? null)) : (pin.version ?? null);
+    const axisName = cur.axis === 'revision' ? 'revision' : 'version';
+    if (pinAxis && cur.version && pinAxis !== cur.version) {
+      // **진짜 할 일**: 결정이 개정됐다. 재검토가 필요하다.
+      violate('freshness', label, `${pin.path} 개정됨(${axisName} ${pinAxis}→${cur.version})`,
         'SDD로 재검토하고 그 결과를 기록한 뒤 핀을 갱신하라', { path: pin.path });
     } else if (pin.contentHash && !/[<>]/.test(pin.contentHash) && pin.contentHash !== cur.hash) {
-      violate('freshness', label, `${pin.path}가 버전업 없이 수정됨(핀 hash 불일치)`,
-        '상위 문서의 version을 먼저 올리고, 재검토 후 슬라이스 핀을 갱신하라', { path: pin.path });
+      // 개정 번호는 그대로인데 내용이 다르다 — **문구·서식 손질이거나, 개정인데 번호를 안 올린 것**이다.
+      // 옛 문구는 여기서 "상위 문서의 version을 먼저 올리라"고 했는데, easyproduct 문서에서 그건
+      // **스키마 계약 버전을 오염시키는 오지시**다. 축 이름을 어댑터에서 받아 말한다.
+      const fix = cur.axis === 'revision'
+        ? '내용을 확인하고 핀을 갱신하라. **결정이 바뀐 것이면 상위 문서의 `revision`을 올린다** — '
+          + '`version`은 payload 계약(스키마) 버전이라 올리지 않는다.'
+        : '상위 문서의 version을 먼저 올리고, 재검토 후 슬라이스 핀을 갱신하라';
+      violate('freshness', label, `${pin.path}가 핀 이후 수정됨(${axisName} ${pinAxis ?? '없음'} 그대로 · 내용 해시 불일치)`,
+        fix, { path: pin.path });
     }
   }
 }

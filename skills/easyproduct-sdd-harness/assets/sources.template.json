@@ -1,22 +1,28 @@
 {
   "$comment": "슬라이스 핀 — 이 슬라이스가 근거로 삼은 상위 문서와 그때의 버전·내용 해시. specs/<slug>/sources.json",
-  "$comment_version": "version 값은 상위 문서가 쓰는 표기를 그대로 적는다 — easyproduct 문서는 보통 정수(1, 2…), 헌법은 SemVer(2.2.0).",
-  "$comment_why": "version만 핀하면 '버전업 없이 수정'을 놓친다. contentHash를 함께 적어 둘 다 비교한다.",
-
+  "$comment_version": "**개정 축은 상위 문서 계열마다 다르다.** easyproduct 문서는 `revision`(결정 개정 번호)이고, 그 문서의 `version`은 **payload 계약(스키마) 버전**이라 내용이 바뀌어도 안 올라간다 — 개정 축으로 쓰지 말 것. 헌법 등 일반 문서는 자기 버전 표식(SemVer 2.2.0)을 `version`에 적는다.",
+  "$comment_why": "개정 축만 핀하면 '번호를 안 올리고 고친 것'을 놓친다. `contentHash`를 함께 적어 둘 다 비교한다. 축이 오르면 **결정 개정 → 재검토 필요**, 축은 같은데 해시만 다르면 **문구 손질(가벼움)**로 갈려 보고된다.",
   "sources": [
     {
       "path": "app_docs/ssot/data-model.md",
-      "version": "1",
+      "revision": "1",
       "contentHash": "sha256:<검사기가 계산한 값>",
-      "anchors": ["<선택: 이 슬라이스가 실제로 참조한 앵커 목록 — 앵커 단위 영향 분석용>"]
+      "anchors": [
+        "<선택: 이 슬라이스가 실제로 참조한 앵커 목록 — 앵커 단위 영향 분석용>"
+      ]
     },
     {
       "path": "app_docs/ssot/ia.md",
-      "version": "1",
+      "revision": "1",
       "contentHash": "sha256:<…>"
+    },
+    {
+      "path": ".specify/memory/constitution.md",
+      "version": "2.2.0",
+      "contentHash": "sha256:<…>",
+      "$comment": "easyproduct 문서가 아니면 자기 버전 표식을 version에 적는다."
     }
   ],
-
   "$comment_global": "헌법·CLAUDE.md·AGENTS.md 같은 전역 원칙은 여기 넣지 말고 .specify/sdd-sources.json 한 곳에 모은다(전역 변경 폭풍 완화).",
-  "$comment_update": "상위가 바뀌어 ④가 걸리면: 무엇을 고칠지 SDD로 재검토 → upstream-check.md에 기록 → 여기 version·contentHash를 갱신."
+  "$comment_update": "상위가 바뀌어 ④가 걸리면: 무엇을 고칠지 SDD로 재검토 → upstream-check.md에 기록 → 여기 개정 축(easyproduct=`revision` / 그 외=`version`)과 `contentHash`를 갱신. **easyproduct 문서의 `version`을 올려 해결하려 하지 말 것** — 그건 스키마 계약 버전이라 오염된다."
 }
