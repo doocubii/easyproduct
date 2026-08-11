@@ -70,23 +70,43 @@ function scalarOrList(v) {
 }
 
 // ── JSON Schema 검증기 (이 세트 스키마가 쓰는 부분집합) ──
-function validate(obj, schema, p, errs) {
+// `root`는 `$ref` 해석의 기준이다(스키마 최상위). 재귀할 때 함께 넘긴다.
+function validate(obj, schema, p, errs, root) {
+  root = root || schema;
+  // **`$ref` 지원.** 없으면 `$ref`만 든 스키마가 `type`도 `required`도 없는 **빈 스키마**로 취급돼
+  // 그 안이 통째로 무검사가 된다(0.10.0의 프레임 io가 실제로 그랬다 — `{"엉터리":1}`이 통과했다).
+  // 우리 스키마가 쓰는 것은 문서 내부 포인터(`#/$defs/...`)뿐이라 그만 푼다.
+  if (schema.$ref) {
+    const target = String(schema.$ref).replace(/^#\//, '').split('/')
+      .reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), root);
+    if (!target) { errs.push(`${p} — 풀 수 없는 $ref: ${schema.$ref}`); return; }
+    return validate(obj, target, p, errs, root);
+  }
   if (schema.const !== undefined && obj !== schema.const) errs.push(`${p} = ${JSON.stringify(obj)} (const ${JSON.stringify(schema.const)} 아님)`);
   if (schema.enum && !schema.enum.includes(obj)) errs.push(`${p} = ${JSON.stringify(obj)} (허용값 ${schema.enum.join('|')} 아님)`);
   if (schema.type && !typeOk(obj, schema.type)) { errs.push(`${p} 타입 ${schema.type} 아님`); return; }
   if (schema.pattern && typeof obj === 'string' && !new RegExp(schema.pattern).test(obj)) errs.push(`${p} = "${obj}" (패턴 위반)`);
   if (schema.type === 'array' && Array.isArray(obj)) {
     if (schema.minItems != null && obj.length < schema.minItems) errs.push(`${p} 항목 ${obj.length} < 최소 ${schema.minItems}`);
-    if (schema.items) obj.forEach((it, i) => validate(it, schema.items, `${p}[${i}]`, errs));
+    if (schema.items) obj.forEach((it, i) => validate(it, schema.items, `${p}[${i}]`, errs, root));
   }
   if (schema.type === 'object' || schema.properties || schema.required) {
     const o = obj && typeof obj === 'object' ? obj : {};
     if (schema.required) for (const r of schema.required) if (!(r in o)) errs.push(`${p}.${r} 누락`);
     if (schema.minProperties != null && Object.keys(o).length < schema.minProperties) errs.push(`${p} 속성 ${Object.keys(o).length} < 최소 ${schema.minProperties}`);
-    for (const [k, s] of Object.entries(schema.properties || {})) if (k in o) validate(o[k], s, `${p}.${k}`, errs);
-    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+    for (const [k, s] of Object.entries(schema.properties || {})) if (k in o) validate(o[k], s, `${p}.${k}`, errs, root);
+    // **`additionalProperties: false` = 모르는 키 금지.** 옛 코드는 `additionalProperties`가 **객체**일 때만
+    // (= 나머지 키를 그 규격으로 검사) 다뤘고, `false`는 falsy라 분기가 통째로 건너뛰어졌다.
+    // 그래서 키를 한 글자 틀려도(`exclude`/`except`) **조용히 아무 일도 안 일어났다** — 스키마가 명시적으로
+    // 잠근 자리인데 검사 층이 비어 있었다(실측: `appliesTo`가 무효인 채 통과해 로그인 화면이 껍데기에 남았다).
+    if (schema.additionalProperties === false) {
       const known = new Set(Object.keys(schema.properties || {}));
-      for (const [k, v] of Object.entries(o)) if (!known.has(k)) validate(v, schema.additionalProperties, `${p}.${k}`, errs);
+      for (const k of Object.keys(o)) {
+        if (!known.has(k)) errs.push(`${p}.${k} — 스키마에 없는 키(오타인지 확인: ${[...known].slice(0, 6).join(' · ')}${known.size > 6 ? ' …' : ''})`);
+      }
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+      const known = new Set(Object.keys(schema.properties || {}));
+      for (const [k, v] of Object.entries(o)) if (!known.has(k)) validate(v, schema.additionalProperties, `${p}.${k}`, errs, root);
     }
   }
 }
@@ -115,6 +135,8 @@ function extractBlocks(md, tag) {
 // 스킬 자산은 이 스크립트 기준 <skills>/easyproduct-*/schemas/<같은 파일명>에 있다.
 const SKILLS_ROOT = path.resolve(new URL('.', import.meta.url).pathname, '../..');
 const canonicalCache = new Map();
+const schemaCopyUnchecked = new Set();  // 스킬 자산을 못 찾아 사본 일치를 못 본 스키마들
+const versionDrift = [];  // frontmatter version이 스키마 계약 버전과 다름(문서 수정 카운터로 오해한 흔적)
 function canonicalSchemaPath(basename) {
   if (canonicalCache.has(basename)) return canonicalCache.get(basename);
   let hit = null;
@@ -288,6 +310,19 @@ for (let qi = 0; qi < queue.length; qi++) {
     const abs = path.resolve(path.dirname(fp), rel);
     queue.push({ path: path.relative(root, abs).replace(/\\/g, '/'), abs, viaInclude: d.path });
   }
+  // `version`은 **payload 계약(스키마) 버전**이라 내용이 바뀌어도 안 올라간다. 그런데 그게 지켜지는지
+  // 보는 층이 없어, 문서 수정 카운터로 오해해 올린 값(`version: 13`)이 v1 스키마 문서에 박혀도 침묵했다
+  // (실측: SDD 하네스가 "상위 문서의 version을 먼저 올려라"라고 오지시했고 그대로 오염됐다).
+  // 파일명의 `.v<N>`이 그 문서가 쓰는 계약 버전이므로 둘을 대조한다.
+  {
+    const m = /\.v([0-9]+)\.schema\.json$/.exec(String(machine.schema || ''));
+    const declared = fm.version != null ? String(fm.version).trim() : null;
+    if (m && declared && declared !== m[1]) {
+      report(`  ❌ ${d.path}: version ${declared} != 스키마 계약 v${m[1]}`);
+      versionDrift.push({ path: d.path, declared, want: m[1], revision: fm.revision ?? null });
+      problems.push('schema');
+    }
+  }
   if (!machine.tag || !machine.schema) { report(`  · ${d.path.padEnd(30)} (${fm.doc_type}) 기계블록 없음`); continue; }
   const schemaPath = path.resolve(path.dirname(fp), machine.schema);
   let schema; try { schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')); }
@@ -302,6 +337,10 @@ for (let qi = 0; qi < queue.length; qi++) {
   }
   // 사본이 스킬 자산과 다르면 둘 중 하나가 뒤처진 것 → 어느 쪽인지는 사람이 판단한다.
   const canon = canonicalSchemaPath(path.basename(schemaPath));
+  // 스킬 자산을 못 찾으면 이 검사를 **생략한다**(검사기를 스킬 밖으로 옮겨 단독 실행하는 경우).
+  // 그때 아무 말도 안 하면 **"검사했는데 같다"와 "아예 안 봤다"가 출력에서 구분되지 않는다** —
+  // 실사용에서 사본이 뒤처진 것을 `diff`로 직접 비교하기 전까지 몰랐다. 무엇을 안 봤는지는 밝힌다.
+  if (!canon) schemaCopyUnchecked.add(path.basename(schemaPath));
   if (canon) {
     try {
       if (stable(JSON.parse(fs.readFileSync(canon, 'utf8'))) !== stable(schema)) {
@@ -452,6 +491,26 @@ function dataRefOk(ref) {
 }
 
 // 2차: 크로스도큐먼트 참조 무결성
+// `version`을 문서 수정 카운터로 오해한 흔적 — **이행 안내를 함께** 낸다(그냥 1로 되돌리면 SDD 핀이 깨진다).
+if (versionDrift.length) {
+  report(`\n  ⚠ \`version\`이 스키마 계약과 다른 문서 ${versionDrift.length}개 — **이행 필요**`);
+  for (const x of versionDrift.slice(0, CAP(versionDrift.length))) {
+    report(`     · ${x.path} — version ${x.declared} (계약 v${x.want}${x.revision != null ? ` · revision ${x.revision}` : ' · revision 없음'})`);
+  }
+  if (!verbose && versionDrift.length > 5) report(`     · 외 ${versionDrift.length - 5}개 (--verbose로 전부)`);
+  report('     → `version`은 **payload 계약(스키마) 버전**이다. 문서를 고쳤다고 올리지 않는다 —');
+  report('        결정이 바뀐 것은 `revision`으로 나타낸다(다른 축이다).');
+  report('     → SDD 하네스를 함께 쓴다면 **핀부터 재생성한 뒤** version을 계약 값으로 되돌리세요.');
+  report('        순서를 뒤집으면(먼저 되돌리면) 슬라이스 핀이 한꺼번에 깨집니다.');
+}
+
+// 무엇을 안 봤는지 밝힌다 — 조용한 생략은 "봤는데 문제없음"으로 읽힌다.
+if (schemaCopyUnchecked.size) {
+  report(`  · 스키마 사본 일치를 **확인하지 못함** ${schemaCopyUnchecked.size}종(${[...schemaCopyUnchecked].join(', ')})`);
+  report('     스킬 자산을 못 찾았습니다(검사기를 스킬 밖에 두고 실행한 경우). 사본이 뒤처져도 알 수 없으니,');
+  report('     스킬 폴더의 검사기로 한 번 돌리거나 사본을 직접 대조하세요.');
+}
+
 report('\n[2] 크로스도큐먼트 참조 (죽은 링크)');
 let refChecked = 0, dead = 0;
 const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다

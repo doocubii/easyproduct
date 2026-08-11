@@ -60,6 +60,7 @@ make_fixture() {   # $1 = generic | ep
 ---
 doc_type: ia
 version: 1
+revision: 1
 ssot: prose
 machine:
   tag: ia.features
@@ -249,6 +250,31 @@ MD
     "any('interface-request' in n for n in d.get('notes', []))" -- --full
   git checkout -- sdd-policy.json specs/001-login/spec.md 2>/dev/null || true
   rm -rf app_docs/interface-requests app_docs/00-index.md
+  # H: 개정 축은 어댑터마다 다르다 — easyproduct 문서는 `revision`이지 `version`이 아니다.
+  #    옛 코드는 frontmatter `version`을 축으로 삼아 "version을 먼저 올려라"라고 지시했고,
+  #    그건 payload 계약(스키마) 버전을 오염시키는 오지시였다(실측: v1 문서에 version: 13).
+  cd "$WORK/ep" || exit 1
+  printf '{ "sources": [ { "path": "app_docs/ssot/ia.md", "revision": "1", "contentHash": "%s" } ] }\n' \
+    "$(node -e "const c=require('crypto'),f=require('fs');console.log('sha256:'+c.createHash('sha256').update(f.readFileSync('app_docs/ssot/ia.md','utf8').replace(/\r\n/g,'\n')).digest('hex'))")" \
+    > specs/001-login/sources.json
+  expect "H 핀과 revision이 같으면 조용하다" \
+    "[x for x in v if x['rule']=='freshness']==[]" -- --full
+  # 결정 개정 → 재검토가 필요한 진짜 신호
+  sed -i 's/^revision: 1$/revision: 2/' app_docs/ssot/ia.md
+  grep -q '^revision: 2$' app_docs/ssot/ia.md && ok "H 픽스처 편집이 적용됐다(전제 확인)" || bad "H 편집이 안 먹었다"
+  expect "H revision이 오르면 '개정됨'으로 잡는다" \
+    "any('개정됨' in x['message'] and 'revision 1→2' in x['message'] for x in v)" -- --full
+  # 문구만 손질 → 가벼운 갈래. 그리고 **version을 올리라고 하지 않는다**
+  sed -i 's/^revision: 2$/revision: 1/' app_docs/ssot/ia.md
+  printf '\n<!-- 오타 고침 -->\n' >> app_docs/ssot/ia.md
+  expect "H 축은 같은데 내용만 바뀌면 다른 문구로 잡는다" \
+    "any('핀 이후 수정됨' in x['message'] for x in v)" -- --full
+  expect "H easyproduct 문서에 version을 올리라고 하지 않는다" \
+    "[x for x in v if x['rule']=='freshness' and 'version을 먼저 올리' in (x.get('action') or '')]==[]" -- --full
+  expect "H revision을 올리라고 안내한다" \
+    "any('revision' in (x.get('action') or '') for x in v if x['rule']=='freshness')" -- --full
+  git checkout -- app_docs/ssot/ia.md specs/001-login/sources.json 2>/dev/null || true
+
 
   # G: 모노레포 — specsDir가 두 마디면 슬러그 파싱이 밀린다(실측 결함).
   #    references/monorepo.md가 "frontend-user/specs"를 권장 예시로 싣고 있어, 우리가 시킨 설정이
