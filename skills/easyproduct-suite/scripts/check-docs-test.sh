@@ -925,5 +925,85 @@ node "$CHECK" "$FR" > "$WORK/out.txt" 2>&1
 expect_no_out "이관하면 해제된다" "소유 프레임과 어긋난 동작 id"
 
 echo
+echo "[22] 검증기의 두 구멍 — 모르는 키와 스키마 참조 (둘 다 미탐이었다)"
+# 잘못 썼는데 `위반:0`이 나오면 쓴 사람은 맞게 쓴 줄 안다. 실사용에서 `appliesTo`의 키를 `exclude`로
+# 잘못 쓰고도 통과해, 로그인 화면이 껍데기에서 안 빠진 채 "로그인하려면 세션이 있어야 한다"가 될 뻔했다.
+VH="$WORK/valhole"
+mkdir -p "$VH/screens/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$VH/screens/user/schemas/"
+[ -n "$frsrc" ] && cp "$frsrc" "$VH/screens/user/schemas/"
+
+# (가) additionalProperties: false — 모르는 키
+cat > "$VH/screens/user/s.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.law.search", "feat": "FEAT.law.search", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.law.search.go", "action": "검색", "target": "server",
+      "sends": [], "receives": [],
+      "transientSends": [ { "name": "keyword", "desc": "검색어", "엉터리키": 1 } ] } ] } } ] }
+```
+MD
+node "$CHECK" "$VH" > "$WORK/out.txt" 2>&1
+expect_out "잠근 객체의 모르는 키를 잡는다" "transientSends[0].엉터리키 — 스키마에 없는 키"
+expect_out "오타인지 확인하라고 후보를 보여준다" "오타인지 확인"
+
+# (나) 오타로 잠긴 객체를 우회하던 실제 사례 — appliesTo의 키(exclude/except)
+cat > "$VH/screens/user/screen-design-user-index.md" <<'MD'
+---
+doc_type: screen-design-index
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.frame
+  item: frame-list
+  schema: schemas/screen-design-frame.v1.schema.json
+---
+```json screendesign.frame
+{ "scope": "user", "frames": [ { "id": "FRAME.user.shell", "label": "껍데기",
+  "components": ["UI.x"], "appliesTo": { "exclude": ["FEAT.law.search"] },
+  "data": { "display": [], "io": [] } } ] }
+```
+MD
+node "$CHECK" "$VH" > "$WORK/out.txt" 2>&1
+expect_out "appliesTo의 키 오타(exclude)를 잡는다" "appliesTo.exclude — 스키마에 없는 키"
+
+# (다) 참조($ref) — 프레임 io는 그것으로 정의된다. 지원이 없으면 **통째로 무검사**가 된다.
+#      편집이 실제로 먹었는지 먼저 증명한다 — 결과가 "아무 일도 안 일어남"인 시험은
+#      시험 자체가 아무 일도 안 한 경우와 구분되지 않는다(제보자의 오보가 정확히 그 경로였다).
+sed -i 's/"appliesTo": { "exclude": \["FEAT.law.search"\] },//' "$VH/screens/user/screen-design-user-index.md"
+sed -i 's/"io": \[\]/"io": [ { "완전히엉터리": 1 } ]/' "$VH/screens/user/screen-design-user-index.md"
+if [ "$(grep -c '완전히엉터리' "$VH/screens/user/screen-design-user-index.md")" = "1" ]; then
+  ok "픽스처 편집이 실제로 적용됐다(전제 확인)"
+else
+  bad "픽스처 편집이 안 먹었다 — 아래 결과는 무의미하다"
+fi
+node "$CHECK" "$VH" > "$WORK/out.txt" 2>&1
+expect_out "참조 안의 required가 살아난다(action)" "io[0].action 누락"
+expect_out "참조 안의 모르는 키도 잡는다" "완전히엉터리 — 스키마에 없는 키"
+
+# (라) 생성기가 내는 키는 스키마가 알아야 한다 — 요청서의 frame·appliesTo
+#      (0.10.0에서 생성기에만 넣고 스키마에 안 넣어, 우리가 만든 파일이 우리 스키마를 위반하고 있었다)
+irs="$(find "$HERE/../.." -name "interface-request.v1.schema.json" -path '*/schemas/*' | head -1)"
+if [ -n "$irs" ] && node -e "
+const k = require('$irs').properties.requests.items.properties;
+process.exit(('frame' in k && 'appliesTo' in k) ? 0 : 1)"; then
+  ok "요청서 스키마가 frame·appliesTo를 안다(생성기와 어긋나지 않는다)"
+else
+  bad "요청서 스키마에 frame·appliesTo가 없다 — 생성물이 자기 스키마를 위반한다"
+fi
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
