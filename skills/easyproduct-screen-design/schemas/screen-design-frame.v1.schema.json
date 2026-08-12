@@ -124,6 +124,31 @@
           "type": "string",
           "description": "트리거 컴포넌트(`UI.*`). **진입 가드처럼 누르는 것이 아니면 비운다.**"
         },
+        "auth": {
+          "type": "object",
+          "required": [
+            "required"
+          ],
+          "additionalProperties": false,
+          "description": "이 동작에 **인증·인가가 필요한가**. `target`이 서버면 **필수**다(점검기가 오류로 잡는다) — 화면이 아는 사실이라 백엔드가 추측할 게 아니고, 안 실리면 요청서에 **누가 쓸 수 있는지가 통째로 빠진다**(실측: 서버 동작 135건 중 82건이 권한 정보 없이 백엔드로 나갔고, 그중 27건은 운영자 전용이었다). **방식(토큰이냐 세션이냐, 어느 모드냐)은 적지 않는다** — 그건 백엔드가 정할 계약이다(계약 쪽 `backend-interface`의 `auth.mode`). 여기는 **요구**만 적는다.",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "로그인이 필요한가. 비로그인도 쓸 수 있으면 `false`(예: 약관 조회·공개 상품 목록)."
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "허용 역할. 특정 역할만 쓸 수 있으면 적는다(예: `operator` · `orgAdmin`). `required: true`인데 역할 제한이 없으면(로그인만 하면 누구나) **생략한다.** 역할 이름은 데이터 모델·정책서가 쓰는 어휘를 따른다."
+            },
+            "note": {
+              "type": "string",
+              "description": "권한 판정이 단순 역할로 안 끝날 때 한 줄(예: '본인 소유 문서만'). 근거 규칙이 있으면 `policies`에 `POL.*`을 함께 적는다."
+            }
+          }
+        },
         "sends": {
           "type": "array",
           "items": {

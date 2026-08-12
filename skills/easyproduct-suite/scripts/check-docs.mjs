@@ -431,7 +431,8 @@ for (const doc of loaded) {
       }
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: fr.id, action: a.action, target: a.target || null,
-                        ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
+                        ui: a.ui || null, auth: a.auth || null,
+                        sends: a.sends || [], transientSends: a.transientSends || [],
                         receives: a.receives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: null,
                         frame: fr.id, appliesTo: fr.appliesTo || null, doc: doc.path });
@@ -463,7 +464,8 @@ for (const doc of loaded) {
       }
       for (const a of (dat.io || [])) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
-                        ui: a.ui || null, sends: a.sends || [], transientSends: a.transientSends || [],
+                        ui: a.ui || null, auth: a.auth || null,
+                        sends: a.sends || [], transientSends: a.transientSends || [],
                         receives: a.receives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
@@ -681,8 +683,11 @@ function subsetCandidates(list) {
   for (const small of list) {
     const ks = key(small);
     if (ks.r.size === 0 && ks.s.size === 0) continue;          // 빈 요구는 아무 데나 포함돼 노이즈만 낸다
+    if (authKey(small) === null) continue;                     // 인증 요건 미분류 → 재사용 판단 불가
     for (const big of list) {
       if (small === big || small.screen === big.screen) continue;
+      // **권한이 다르면 재사용 후보가 아니다.** 넓은 쪽 인터페이스로 좁은 쪽을 덮으면 그 순간 열린다.
+      if (authKey(big) === null || authKey(big) !== authKey(small)) continue;
       const kb = key(big);
       if (ks.r.size === kb.r.size && ks.s.size === kb.s.size) continue;   // 완전 일치는 sameShape가 본다
       if (!sub(ks.r, kb.r) || !sub(ks.s, kb.s)) continue;
@@ -696,10 +701,20 @@ function subsetCandidates(list) {
   return out;
 }
 
+// **권한이 다르면 묶으면 안 된다** — 백엔드 스킬이 묶기 금지 신호 1번으로 둔 것이다(묶으면 넓은 쪽으로
+// 열려 정보가 샌다). 지금까지 그 재료가 요구에 없어 기계는 볼 수 없었고, 판단이 전부 사람에게 넘어갔다.
+// `auth`가 생겼으니 **권한이 다른 것은 애초에 후보로 올리지 않는다.**
+// 미분류(`auth` 없음)는 "같다"고 볼 수 없으므로 **자기들끼리도 안 묶는다** — 그래야 모르는 것을 아는 척하지 않는다.
+function authKey(x) {
+  if (!x.auth || typeof x.auth.required !== 'boolean') return null;      // 미분류 → 비교 불가
+  return JSON.stringify([x.auth.required, [...(x.auth.roles || [])].sort(), x.auth.note ?? null]);
+}
 function sameShapeGroups(list) {
   const by = new Map();
   for (const x of list) {
-    const key = JSON.stringify([[...(x.sends || [])].sort(), [...(x.receives || [])].sort()]);
+    const ak = authKey(x);
+    if (ak === null) continue;                                            // 미분류는 묶기 판단에서 뺀다
+    const key = JSON.stringify([[...(x.sends || [])].sort(), [...(x.receives || [])].sort(), ak]);
     if (!by.has(key)) by.set(key, []);
     by.get(key).push(x);
   }
@@ -732,7 +747,7 @@ if (emitNeeds) {
     .filter((x) => (x.target ? String(x.target).split('.')[0] : null) === 'server')
     .map((x) => ({
       id: x.id, screen: x.screen, action: x.action, target: x.target,
-      ui: x.ui ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
+      ui: x.ui ?? null, auth: x.auth ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
       policies: x.policies ?? [], semantics: x.semantics ?? null,
       ...(x.frame ? { frame: x.frame, appliesTo: x.appliesTo ?? null } : {}),
@@ -810,6 +825,7 @@ if (emitReq) {
     requests: picked.map((x) => ({
       ref: x.id || `${x.screen}#${x.action}`, screen: x.screen, action: x.action,
       ...(x.target ? { target: x.target } : {}), ...(x.ui ? { ui: x.ui } : {}),
+      ...(x.auth ? { auth: x.auth } : {}),
       sends: x.sends || [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
       receives: x.receives || [],
@@ -844,8 +860,15 @@ if (emitReq) {
          '> 화면 수만큼 불린다고 보고 호출 빈도·캐시·세션 저장소를 정하세요. `appliesTo`에 예외 화면이 있으면',
          '> 그 화면에서는 일어나지 않습니다(대개 로그인 화면 — 안 빼면 "로그인하려면 세션이 있어야 한다"가 됩니다).', '']
       : []),
-    '| 동작 | 화면/프레임 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|',
-    ...block.requests.map((r) => `| \`${r.ref}\` | ${r.screen} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`),
+    '| 동작 | 화면/프레임 | 인증 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|---|',
+    ...block.requests.map((r) => {
+      // 인증 요건은 **백엔드가 계약(auth.mode·checks)을 정하는 근거**다. 미분류를 빈칸으로 두면
+      // "인증 불필요"로 읽히므로 **미분류라고 적는다**.
+      const au = !r.auth ? '**미분류**'
+        : (r.auth.required ? `필요${(r.auth.roles || []).length ? ` (${r.auth.roles.join('·')})` : ''}` : '불필요')
+          + (r.auth.note ? ` — ${r.auth.note}` : '');
+      return `| \`${r.ref}\` | ${r.screen} | ${au} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`;
+    }),
     '',
     ...(() => {
       // **묶기 후보는 범위 전체로 계산한다.** 이 계산의 존재 이유가 "화면(그리고 대개 도메인)을 가로지르는
@@ -931,6 +954,22 @@ if (screenIo.length) {
     report('     → 승인·저장 같은 **변경 동작의 응답**은 조회가 아니다. 화면을 열 때 서버에서 가져오는 것을 따로 적으세요.');
     report('        (`IO.<도메인>.<화면>.load` · `target: server` · `ui` 없음)');
     report('     → 앞 화면에서 받은 값만 보여주는 화면이면 그대로 두고, 산문에 그 사실을 한 줄 밝히세요.');
+  }
+  // **`auth`는 server 동작에 필수다.** 스키마에 `if/then`이 없어 조건부 required를 못 걸므로 여기서 강제한다
+  // (화면 이동·정렬 토글까지 요구하면 소음이라 범위를 server로 한정한다).
+  // 없다고 **"인증 불필요"로 간주하지 않는다** — 그러면 안 쓴 것과 "불필요라고 쓴 것"이 구분되지 않고,
+  // 실측에서 운영자 전용 27건이 정확히 반대로 읽힐 뻔했다(청구 목록·상품 노출 토글 등).
+  const noAuth = serverIo.filter((x) => !x.auth || typeof x.auth.required !== 'boolean');
+  if (noAuth.length) {
+    report(`  ❌ 인증 요건(\`auth\`)이 없는 서버 동작 ${noAuth.length}건 — 누가 쓸 수 있는지가 요청서에서 빠진다`);
+    for (const x of noAuth.slice(0, CAP(noAuth.length))) {
+      report(`     · ${x.id || `${x.screen}#${x.action}`} (${x.screen})`);
+    }
+    if (!verbose && noAuth.length > 5) report(`     · 외 ${noAuth.length - 5}건 (--verbose로 전부)`);
+    report('     → `auth: { required: true|false }`를 적으세요. 특정 역할만 쓰면 `roles`도 함께.');
+    report('        **방식(토큰·세션·모드)은 적지 않습니다** — 그건 백엔드가 정할 계약이고, 여기는 요구입니다.');
+    report('     → 판단이 안 서면 지어내지 말고 산문에 `[확인 필요: 이 동작의 권한]`을 남기세요.');
+    dead++;
   }
   if (untargeted.length) {
     report(`  ⚠ \`target\` 미분류 동작 ${untargeted.length}건 — **업그레이드 필요**(server/local/client 판정)`);

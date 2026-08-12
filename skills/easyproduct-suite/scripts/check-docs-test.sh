@@ -420,11 +420,11 @@ machine:
 { "screens": [
  { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
    "data": { "display": [], "bindings": [], "io": [
-     { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+     { "id": "IO.auth.login.submit", "action": "로그인", "target": "server", "auth": { "required": false },
        "sends": ["member.phone"], "receives": ["member.id"] } ] } },
  { "id": "FEAT.home.main", "feat": "FEAT.home.main", "components": ["UI.x"],
    "data": { "display": [], "bindings": [], "io": [
-     { "id": "IO.home.main.login", "action": "홈에서 바로 로그인", "target": "server",
+     { "id": "IO.home.main.login", "action": "홈에서 바로 로그인", "target": "server", "auth": { "required": false },
        "sends": ["member.phone"], "receives": ["member.id"] } ] } } ] }
 ```
 MD
@@ -454,11 +454,11 @@ machine:
 { "screens": [
  { "id": "FEAT.order.detail", "feat": "FEAT.order.detail", "components": ["UI.x"],
    "data": { "display": [], "bindings": [], "io": [
-     { "id": "IO.order.detail.load", "action": "상세 보기", "target": "server", "sends": ["order.id"],
+     { "id": "IO.order.detail.load", "action": "상세 보기", "target": "server", "auth": { "required": true }, "sends": ["order.id"],
        "receives": ["order.status","order.amount","order.pickupSlot","order.itemNote","order.createdAt"] } ] } },
  { "id": "FEAT.order.list", "feat": "FEAT.order.list", "components": ["UI.x"],
    "data": { "display": [], "bindings": [], "io": [
-     { "id": "IO.order.list.row", "action": "목록 한 줄", "target": "server", "sends": ["order.id"],
+     { "id": "IO.order.list.row", "action": "목록 한 줄", "target": "server", "auth": { "required": true }, "sends": ["order.id"],
        "receives": ["order.status","order.amount","order.pickupSlot","order.createdAt"] } ] } } ] }
 ```
 MD
@@ -479,7 +479,7 @@ mkfront() { printf -- '---\ndoc_type: screen-design\nversion: 1\nrevision: 1\nss
 ```json screendesign.screens
 { "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
   "data": { "display": [], "bindings": [], "io": [
-    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server", "auth": { "required": true },
       "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
 ```
 MD
@@ -488,7 +488,7 @@ MD
 ```json screendesign.screens
 { "screens": [ { "id": "FEAT.mypage.home", "feat": "FEAT.mypage.home", "components": ["UI.x"],
   "data": { "display": [], "bindings": [], "io": [
-    { "id": "IO.mypage.home.load", "action": "내 정보", "target": "server",
+    { "id": "IO.mypage.home.load", "action": "내 정보", "target": "server", "auth": { "required": true },
       "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
 ```
 MD
@@ -497,7 +497,7 @@ MD
 ```json screendesign.screens
 { "screens": [ { "id": "FEAT.member.list", "feat": "FEAT.member.list", "components": ["UI.x"],
   "data": { "display": [], "bindings": [], "io": [
-    { "id": "IO.member.list.load", "action": "회원 조회", "target": "server",
+    { "id": "IO.member.list.load", "action": "회원 조회", "target": "server", "auth": { "required": true, "roles": ["operator"] },
       "sends": ["member.phone"], "receives": ["member.id","member.name"] } ] } } ] }
 ```
 MD
@@ -1003,6 +1003,85 @@ process.exit(('frame' in k && 'appliesTo' in k) ? 0 : 1)"; then
 else
   bad "요청서 스키마에 frame·appliesTo가 없다 — 생성물이 자기 스키마를 위반한다"
 fi
+
+echo
+echo "[23] 인증 요건(auth) — 누가 쓸 수 있는지가 요구에 실린다"
+# 실측: 서버 동작 135건 중 82건이 권한 정보 없이 백엔드로 나갔고, 그중 27건이 운영자 전용이었다
+# (청구 목록·상품 노출 토글 등). 없다고 "인증 불필요"로 간주하면 그 27건이 공개 엔드포인트가 된다.
+AU="$WORK/auth"
+mkdir -p "$AU/screens/user/schemas" "$AU/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$AU/screens/user/schemas/"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$AU/ssot/schemas/"
+cat > "$AU/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "product", "label": "상품", "fields": [
+  { "name": "id", "label": "ID", "type": "문자" },
+  { "name": "name", "label": "이름", "type": "문자" } ] }
+```
+MD
+mkauth() {  # $1 = io 배열 본문
+cat > "$AU/screens/user/s.md" <<MD
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+\`\`\`json screendesign.screens
+{ "screens": [ { "id": "FEAT.product.list", "feat": "FEAT.product.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [$1] } },
+ { "id": "FEAT.admin.product.list", "feat": "FEAT.admin.product.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.admin.product.list.load", "action": "운영자 상품 목록", "target": "server",
+      "auth": { "required": true, "roles": ["operator"] },
+      "sends": [], "receives": ["product.id","product.name"] } ] } } ] }
+\`\`\`
+MD
+}
+# (가) server 동작인데 auth가 없으면 **오류**다 — 미분류를 "불필요"로 간주하지 않는다
+mkauth '{ "id": "IO.product.list.load", "action": "상품 목록", "target": "server",
+      "sends": [], "receives": ["product.id","product.name"] }'
+node "$CHECK" "$AU" > "$WORK/out.txt" 2>&1
+expect_out "server 동작에 auth가 없으면 잡는다" "인증 요건(\`auth\`)이 없는 서버 동작 1건"
+expect_out "어느 동작인지 짚는다" "IO.product.list.load"
+expect_out "방식은 적지 말라고 안내한다" "방식(토큰·세션·모드)은 적지 않습니다"
+expect_out "지어내지 말라고 안내한다" "[확인 필요: 이 동작의 권한]"
+
+# (나) client·local 동작에는 요구하지 않는다 — 화면 이동까지 강제하면 소음이다
+mkauth '{ "id": "IO.product.list.go", "action": "상세로 이동", "target": "client", "sends": [], "receives": [] },
+    { "id": "IO.product.list.load", "action": "상품 목록", "target": "server", "auth": { "required": false },
+      "sends": [], "receives": ["product.id","product.name"] }'
+node "$CHECK" "$AU" > "$WORK/out.txt" 2>&1
+expect_no_out "client 동작에는 auth를 요구하지 않는다" "인증 요건"
+
+# (다) **권한이 다르면 묶기 후보로 올리지 않는다** — 백엔드 스킬의 묶기 금지 신호 1번.
+#      보내고 받는 것이 같아도 한쪽은 비로그인, 한쪽은 운영자 전용이면 묶으면 그 순간 열린다.
+node "$CHECK" "$AU" --emit-interface-request --scope user --domain s 2>/dev/null > "$WORK/au-req.md"
+if grep -q "묶을 후보" "$WORK/au-req.md"; then bad "권한이 다른데 묶을 후보로 올림"; else ok "권한이 다르면 묶기 후보에서 가른다"; fi
+# 권한을 같게 맞추면 그때는 후보가 된다(형태가 같으므로)
+mkauth '{ "id": "IO.product.list.load", "action": "상품 목록", "target": "server",
+      "auth": { "required": true, "roles": ["operator"] },
+      "sends": [], "receives": ["product.id","product.name"] }'
+node "$CHECK" "$AU" --emit-interface-request --scope user --domain s 2>/dev/null > "$WORK/au-req.md"
+if grep -q "묶을 후보" "$WORK/au-req.md"; then ok "권한이 같으면 후보로 올린다"; else bad "권한이 같은데 후보가 안 뜸"; fi
+
+# (라) 요청서가 인증 요건을 싣는다 — 미분류는 **빈칸이 아니라 '미분류'**로 적는다
+if grep -q "필요 (operator)" "$WORK/au-req.md"; then ok "요청서 표에 역할까지 싣는다"; else bad "요청서에 인증 요건이 없음"; fi
+if grep -q '"auth"' "$WORK/au-req.md"; then ok "요청서 블록에도 싣는다(백엔드가 기계로 읽는다)"; else bad "블록에 없음"; fi
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"
