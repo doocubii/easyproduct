@@ -60,6 +60,15 @@
 | `backend-schema` | `backend.tables` | backend-schema.v1 | `BESCHEMA.<테이블>` | prose |
 | `backend-interface` | `backend.interfaces` | backend-interface.v1 | `BEITF.<범위>.<도메인>.<이름>` | prose |
 
+> **`ia`는 범위가 둘 이상이면 여러 파일일 수 있다** — `ssot/ia.md`(허브, 블록 없음, `machine.includes`) +
+> `ssot/ia-user.md` · `ssot/ia-backoffice.md`(각자 frontmatter·`revision`·블록). 새 규약이 아니라
+> **데이터 모델·백엔드 인터페이스와 같은 `machine.includes` 장치**다. 점검자는 등기부를 **문서마다 누적**하므로
+> `FEAT.*` 크로스참조는 그대로 돈다. 대신 **파일이 갈리면서 생기는 두 가지를 새로 본다:**
+> - **중복 기능 정의** — 같은 `FEAT.*`가 두 파일에 있으면 **오류**(나중 것이 조용히 덮어써 라벨·상태가 뒤바뀐다).
+>   데이터 그룹에 이미 같은 가드가 있다.
+> - **범위와 어긋난 기능** — 파일명이 범위를 밝히는데 `audience`가 다르면 경고. **판정 근거는 파일명이 아니라
+>   `audience`**다(그게 정본). 나눈 뜻이 "소유자를 1:1로"인데 섞이면 두 팀이 같은 파일을 다시 고친다.
+
 ## anchor·네임스페이스 레지스트리 (크로스도큐먼트 참조 라우팅)
 
 문서 어디에 아래 ID가 나오면, **접두사가 곧 "어느 등기부에서 조회할지"의 타입 표시**다. 점검자는 접두사로 라우팅해 실재 여부를 확인한다(끊긴 참조=죽은 링크).
