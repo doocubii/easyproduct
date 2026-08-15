@@ -1084,5 +1084,58 @@ if grep -q "필요 (operator)" "$WORK/au-req.md"; then ok "요청서 표에 역�
 if grep -q '"auth"' "$WORK/au-req.md"; then ok "요청서 블록에도 싣는다(백엔드가 기계로 읽는다)"; else bad "블록에 없음"; fi
 
 echo
+echo "[24] IA 범위별 분리 — 파일이 갈리면서 생기는 것들"
+# 트랙이 갈린 모노레포에서 IA만 소유자가 둘이라 합칠 때마다 충돌한다(실측: 충돌 원인이 frontmatter
+# revision 한 줄). 파일을 나누면 사라지는데, 대신 한 파일일 때는 불가능했던 사고가 생긴다.
+IA="$WORK/iasplit"
+mkdir -p "$IA/ssot/schemas"
+iasrc="$(find "$HERE/../.." -name "ia.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$iasrc" ] && cp "$iasrc" "$IA/ssot/schemas/"
+mkia() {  # $1 = 파일명, $2 = features 본문
+cat > "$IA/ssot/$1" <<MD
+---
+doc_type: ia
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: ia.features
+  schema: schemas/ia.v1.schema.json
+  namespace: FEAT
+---
+\`\`\`json ia.features
+{ "features": [$2] }
+\`\`\`
+MD
+}
+# (가) 나눠도 등기부는 하나로 모인다 — 크로스참조가 그대로 돈다
+mkia ia-user.md '{ "id": "FEAT.order.create", "label": "주문하기", "audience": "user", "status": "확정" }'
+mkia ia-backoffice.md '{ "id": "FEAT.admin.order.list", "label": "주문 관리", "audience": "admin", "status": "확정" }'
+node "$CHECK" "$IA" > "$WORK/out.txt" 2>&1
+expect_out "나뉜 두 파일의 기능이 한 등기부로 모인다" "FEAT 2"
+expect_no_out "정상 분리에는 아무 말도 하지 않는다" "중복 기능 정의"
+
+# (나) **중복 기능 정의** — 파일이 하나일 때는 불가능했던 사고다
+mkia ia-backoffice.md '{ "id": "FEAT.order.create", "label": "주문 관리", "audience": "admin", "status": "확정" }'
+node "$CHECK" "$IA" > "$WORK/out.txt" 2>&1
+expect_out "같은 FEAT이 두 파일에 있으면 잡는다" "중복 기능 정의: FEAT.order.create"
+expect_out "어느 두 파일인지 밝힌다" "ia-user.md"
+
+# (다) **범위와 어긋난 기능** — 판정 근거는 파일명이 아니라 audience 다
+mkia ia-backoffice.md '{ "id": "FEAT.support.faq", "label": "FAQ", "audience": "user", "status": "확정" }'
+node "$CHECK" "$IA" > "$WORK/out.txt" 2>&1
+expect_out "나눈 파일에 다른 범위가 섞이면 알린다" "범위와 어긋난 기능 1건"
+expect_out "audience 가 정본임을 밝힌다" "audience\` 값이 정본입니다"
+
+# (라) 나누지 않은 세트(범위 표시 없는 파일명)는 대상이 아니다
+rm -f "$IA/ssot/ia-user.md" "$IA/ssot/ia-backoffice.md"
+mkia ia.md '{ "id": "FEAT.support.faq", "label": "FAQ", "audience": "user", "status": "확정" },
+  { "id": "FEAT.admin.order.list", "label": "주문 관리", "audience": "admin", "status": "확정" }'
+node "$CHECK" "$IA" > "$WORK/out.txt" 2>&1
+expect_no_out "한 파일 세트에는 범위 어긋남을 말하지 않는다" "범위와 어긋난 기능"
+expect_no_out "한 파일 안에서는 중복도 아니다" "중복 기능 정의"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
