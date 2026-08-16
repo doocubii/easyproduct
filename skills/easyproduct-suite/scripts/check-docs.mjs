@@ -274,6 +274,8 @@ if (via === 'manifest') {
 // 레지스트리(anchor 등기부)
 const reg = { feat: new Set(), screen: new Set(), group: new Map(), pol: new Set(), ui: new Set(), scn: new Set(), token: new Set(), frame: new Set() };
 const groupOrigin = new Map(); // group -> 그 그룹을 정의한 문서 경로(중복 정의 적발용)
+const featOrigin = new Map();  // FEAT id -> 정의 문서(범위별로 나눈 IA에서 중복 적발용)
+const featAudience = [];       // {id, audience, doc} — 파일과 대상이 어긋났나 보기 위한 것
 const loaded = []; // {docType, path, md, fm, blocks:[{tag,obj}]} — 기계 블록이 있는 문서만
 const allDocs = []; // {docType, path, revision} — 기계 블록 유무와 무관한 전체(파장·신선도용)
 
@@ -373,7 +375,22 @@ for (let qi = 0; qi < queue.length; qi++) {
   // 레지스트리 적재
   for (const o of blocks) {
     if (o.__parseError) continue;
-    if (Array.isArray(o.features)) o.features.forEach(f => reg.feat.add(f.id));
+    // 한 기능의 정의도 정확히 한 곳에만 있어야 한다. IA를 범위별 파일로 나눌 수 있게 되면서
+    // (`ia-user.md` · `ia-backoffice.md`) **파일이 하나일 때는 불가능했던 중복**이 생길 수 있다.
+    // 그냥 `add`하면 나중 것이 조용히 덮어써서, 라벨·상태가 엉뚱한 파일 것으로 잡힌다
+    // (데이터 그룹에서 이미 같은 이유로 가드를 뒀다).
+    if (Array.isArray(o.features)) for (const f of o.features) {
+      const prev = featOrigin.get(f.id);
+      if (prev && prev !== d.path) {
+        report(`  ❌ 중복 기능 정의: ${f.id} 가 ${prev} 와 ${d.path} 양쪽에 있음`);
+        problems.push('dupfeat');
+      }
+      featOrigin.set(f.id, d.path);
+      reg.feat.add(f.id);
+      // 범위별로 나눈 파일에 **다른 범위의 기능**이 섞이면, 소유자가 1:1이 되라고 나눈 뜻이 깨진다.
+      // 판정 근거는 파일명이 아니라 블록의 `audience`다(그게 정본이다).
+      if (f.audience) featAudience.push({ id: f.id, audience: f.audience, doc: d.path });
+    }
     if (Array.isArray(o.screens)) o.screens.forEach(s => reg.screen.add(s.id));
     if (Array.isArray(o.frames)) o.frames.forEach(f => reg.frame.add(f.id));
     if (Array.isArray(o.rules)) o.rules.forEach(r => reg.pol.add(r.id));
@@ -1016,6 +1033,29 @@ if (frameIdDrift.length) {
   report('     → 0.10.0의 `IO.frame.<이름>.*` 예시에는 **범위가 빠져 있었다.** 사용자 앱과 백오피스가 둘 다');
   report('        껍데기를 `shell`이라 부르면 양쪽이 같은 id가 되어 요청서·백엔드 basis가 엉뚱한 동작에 붙는다.');
   report('     → id를 바꾸면 백엔드 계약의 `basis`가 그 id를 가리키던 것이 죽은 링크로 잡힌다 — 함께 고치세요.');
+}
+
+// IA를 범위별로 나눴는데 **다른 범위의 기능이 섞여 있으면** 소유자를 1:1로 만들려던 뜻이 깨진다
+// (그 파일을 두 팀이 다시 함께 고치게 된다). 판정 근거는 파일명이 아니라 블록의 `audience`다.
+// 파일명에 범위 표시가 없으면(단일 IA) 아무 말도 하지 않는다 — 나누지 않은 세트는 대상이 아니다.
+{
+  const SCOPE_OF = [[/-user\b/, 'user'], [/-backoffice\b|-admin\b/, 'admin']];
+  const mixed = [];
+  for (const x of featAudience) {
+    const base = x.doc.split('/').pop();
+    const hit = SCOPE_OF.find(([re]) => re.test(base));
+    if (!hit) continue;                                  // 범위를 안 밝힌 파일 → 판정 대상 아님
+    if (x.audience !== hit[1]) mixed.push({ ...x, want: hit[1] });
+  }
+  if (mixed.length) {
+    report(`  ⚠ 범위와 어긋난 기능 ${mixed.length}건 — 나눈 IA에 다른 범위가 섞였다`);
+    for (const x of mixed.slice(0, CAP(mixed.length))) {
+      report(`     · ${x.id} (audience: ${x.audience}) 가 ${x.doc} 에 있음 — 이 파일은 ${x.want}`);
+    }
+    if (!verbose && mixed.length > 5) report(`     · 외 ${mixed.length - 5}건 (--verbose로 전부)`);
+    report('     → 범위별로 나눈 뜻은 **소유자를 1:1로 만드는 것**입니다. 섞이면 두 팀이 같은 파일을 다시 고칩니다.');
+    report('     → `audience` 값이 정본입니다. 그 값에 맞는 파일로 옮기세요(`FEAT` id는 바꾸지 않습니다).');
+  }
 }
 
 // 화면 문서가 없는 세트(요청서만 넘겨받은 리포 등)에서도 알려야 하므로 위 화면 검사 밖에 둔다.
