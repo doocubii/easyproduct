@@ -1137,5 +1137,121 @@ expect_no_out "한 파일 세트에는 범위 어긋남을 말하지 않는다" 
 expect_no_out "한 파일 안에서는 중복도 아니다" "중복 기능 정의"
 
 echo
+echo "[25] 근거가 요청서를 안 탄 인터페이스 — 갈래를 갈라 안내한다"
+# 실측 사고: 요청이 이슈로 왔는데 basis가 필수라 엉뚱한 화면 동작 id를 갖다 붙였고, id가 실재하니
+# 점검기가 통과시켰다. 그런데 그 4건의 답은 `ops`가 아니라 **화면 설계서**였다 —
+# 서버를 거치는 동작이 target: client로 적혀 있어 요청서에서 빠진 것이었다.
+# 한 갈래로 뭉쳐 "ops를 쓰라"고 안내하면 엉뚱한 곳을 고치게 된다.
+BS="$WORK/basis"
+mkdir -p "$BS/screens/user/schemas" "$BS/ssot/backend/schemas" "$BS/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$BS/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$BS/interface-requests/user/schemas/"
+bisrc="$(find "$HERE/../.." -name "backend-interface.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$bisrc" ] && cp "$bisrc" "$BS/ssot/backend/schemas/"
+mkscr() {  # $1 = target — 따옴표 있는 heredoc으로 쓰고 자리표시자만 바꾼다(백틱이 명령 치환되지 않게)
+cat > "$BS/screens/user/screen-design-user-law.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.law.review", "feat": "FEAT.law.review", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.law.review.editList", "action": "법령 담기", "target": "__TARGET__",
+      "auth": { "required": true }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+  sed -i "s/__TARGET__/$1/" "$BS/screens/user/screen-design-user-law.md"
+  grep -q "\"target\": \"$1\"" "$BS/screens/user/screen-design-user-law.md" || bad "픽스처 편집이 안 먹었다($1)"
+}
+cat > "$BS/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{ "interfaces": [ { "id": "BEITF.user.law.add", "summary": "법령 담기",
+  "transport": "rest", "binding": { "method": "POST", "path": "/laws" },
+  "auth": { "mode": "session", "desc": "로그인 필요" },
+  "request": { "fields": [ { "name": "lawId", "in": "body", "type": "string", "desc": "법령 ID",
+                             "enum": ["a","b"], "optional": true } ] },
+  "response": { "fields": [ { "name": "ok", "type": "boolean", "desc": "성공" } ] },
+  "basis": [ { "kind": "screen-io", "ref": "IO.law.review.editList" } ] } ] }
+```
+MD
+# 요청서는 있으나 그 동작이 안 실렸다(화면이 client라 생성에서 빠짐)
+cat > "$BS/interface-requests/user/interface-request-user-other.md" <<'MD'
+---
+doc_type: interface-request
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: interface.requests
+  item: request-list
+  schema: schemas/interface-request.v1.schema.json
+---
+```json interface.requests
+{ "generatedAt": "2026-08-27", "scope": "user", "domain": "other",
+  "from": [ { "path": "screens/user/screen-design-user-law.md", "contentHash": "sha256:x" } ],
+  "requests": [ { "ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것",
+                  "sends": [], "receives": [] } ] }
+```
+MD
+# (가) target: client → **화면 설계서를 고치라**고 안내해야 한다
+mkscr client
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "요청서를 안 탄 근거를 잡는다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
+expect_out "화면 설계서를 고치라고 안내한다" "화면 설계서를 고치세요"
+expect_out "ops로 바꾸지 말라고 못박는다" "\`ops\`로 바꾸지 마세요"
+
+# (나) target: server 인데 요청서에 없음 → **요청서를 다시 뽑으라**고 안내해야 한다
+mkscr server
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "이때는 요청서 재생성을 안내한다" "요청서를 다시 뽑으세요"
+expect_no_out "이때는 화면 설계서를 고치라고 하지 않는다" "화면 설계서를 고치세요"
+
+# (다) 요청서에 실리면 조용하다
+sed -i 's|"ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것"|"ref": "IO.law.review.editList", "screen": "FEAT.law.review", "action": "법령 담기"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_no_out "요청서에 실려 있으면 아무 말도 하지 않는다" "요청서에 없는 동작을 근거로"
+
+# (라) 별칭 키 집계 — 표준은 values·required 다
+expect_out "허용값 별칭(enum)을 집계한다" "enum 1건"
+expect_out "필수 여부 별칭(optional)도 집계한다" "optional 1건"
+expect_out "표준 이름을 알려준다" "허용값 \`values\` · 필수 여부 \`required\`"
+
+# (마) **수확된 적 없는 화면 문서**의 동작은 판정하지 않는다 — 한 트랙 요청서만 가진 리포에서
+#      그 트랙 전체가 통째로 위반으로 뜨는 오탐을 막는다. 요청서가 이 화면에서 나온 적이 없으면
+#      "아직 요청서가 없는 것"이지 근거가 틀린 것이 아니다.
+mkscr client
+sed -i 's|"path": "screens/user/screen-design-user-law.md"|"path": "screens/user/screen-design-user-other.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+sed -i 's|"ref": "IO.law.review.editList", "screen": "FEAT.law.review", "action": "법령 담기"|"ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_no_out "수확된 적 없는 화면의 동작은 근거 판정에서 빼둔다" "요청서에 없는 동작을 근거로"
+# 같은 화면이 한 번이라도 수확됐으면 다시 판정한다(위 제외가 검사를 통째로 끄지 않는다)
+sed -i 's|"path": "screens/user/screen-design-user-other.md"|"path": "screens/user/screen-design-user-law.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "그 화면이 수확되면 다시 판정한다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

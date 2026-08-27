@@ -533,6 +533,8 @@ if (schemaCopyUnchecked.size) {
 report('\n[2] 크로스도큐먼트 참조 (죽은 링크)');
 let refChecked = 0, dead = 0;
 const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다
+const basisNotInReq = [];   // basis(screen-io)가 요청서에 안 실린 동작을 가리킴 {itfId, ref, doc, io}
+const fieldAliases = [];    // 계약 필드가 별칭 키를 씀 {itfId, field, alias, want, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
@@ -653,6 +655,19 @@ for (const doc of loaded) {
   }
 }
 
+// 요청서에 실제로 실린 요구 목록. **아래 basis 대조의 기준**이다.
+const reqRefs = new Set();
+// **어느 화면 설계서가 요청서로 수확됐나**(`from[].path`). 이게 대조의 게이트다 —
+// "요청서가 하나라도 있으면 판정한다"로 잡으면, **한 트랙 요청서만 가진 리포**(사용자 앱 요청서는 있는데
+// 백오피스 것은 없는 사본 등)에서 그 트랙 전체가 통째로 위반으로 뜬다. 수확된 적 없는 화면 문서의 동작은
+// **아직 요청서가 없는 것**이지 근거가 틀린 것이 아니다.
+const harvested = new Set();
+for (const doc of loaded) for (const o of doc.blocks) {
+  if (o.__parseError || !Array.isArray(o.requests)) continue;
+  for (const r of o.requests) if (r.ref) reqRefs.add(r.ref);
+  for (const f of (o.from || [])) if (f.path) harvested.add(f.path);
+}
+
 // 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
 for (const doc of loaded) {
   for (const o of doc.blocks) {
@@ -660,6 +675,15 @@ for (const doc of loaded) {
     for (const i of (o.interfaces || [])) {
       for (const st of [...(i.reads || []), ...(i.writes || [])]) {
         refChecked++; if (!be.store.has(st)) { report(`  ❌ ${doc.path}: ${i.id} 의 저장소 ${st} → backend.stores에 없음`); dead++; }
+      }
+      // 같은 뜻의 별칭 키를 집계한다(표준: 허용값 `values` · 필수 여부 `required`).
+      const ALIAS = { enum: 'values', optional: 'required' };
+      for (const side of ['request', 'response']) {
+        for (const fl of ((i[side] || {}).fields || [])) {
+          for (const [alias, want] of Object.entries(ALIAS)) {
+            if (alias in fl) fieldAliases.push({ itfId: i.id, field: `${side}.${fl.name}`, alias, want, doc: doc.path });
+          }
+        }
       }
       const mode = i.auth && i.auth.mode;
       if (mode && be.authMode.size) { refChecked++; if (!be.authMode.has(mode)) { report(`  ❌ ${doc.path}: ${i.id} 의 auth.mode ${mode} → backend.system의 authModes에 없음`); dead++; } }
@@ -674,13 +698,66 @@ for (const doc of loaded) {
 for (const b of beBasis) {
   if (b.kind === 'screen-io') {
     if (!b.ref || b.ref.includes('#')) continue;              // 합성 참조(id 없는 옛 문서)는 대조 불가 — 아래에서 집계
-    refChecked++; if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+    refChecked++;
+    if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; continue; }
+    // **화면 동작에 실재한다고 근거가 맞는 것은 아니다.** 요청서에 실리지 않은 동작을 근거로 들면
+    // 요구 → 계약의 흐름을 타지 않은 인터페이스가 된다(실측: 요청이 이슈로 와서 근거 칸을 채우려고
+    // 엉뚱한 동작 id를 갖다 붙였고, id가 실재하니 통과했다).
+    // **고칠 자리가 둘로 갈리므로 갈래를 판정해 안내한다** — 안 그러면 엉뚱한 곳을 고친다.
+    const io = ioById.get(b.ref);
+    if (io && harvested.has(io.doc) && !reqRefs.has(b.ref)) basisNotInReq.push({ ...b, io });
   } else if (b.kind === 'policy') {
     refChecked++; if (!reg.pol.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → policy.rules에 없음`); dead++; }
   } else if (b.kind === 'ops' || b.kind === 'legacy') {
     // 등기부가 없는 갈래다 — 사유가 없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
     if (!b.why || !String(b.why).trim()) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 "${b.ref}"(${b.kind})에 why 없음 — 등기부 없는 갈래는 사유 필수`); dead++; }
   }
+}
+
+// 근거는 실재하는데 **요청서에는 없는** 동작 — 갈래를 갈라 안내한다.
+// 한 갈래로 뭉쳐 "ops를 쓰라"고만 하면 **엉뚱한 곳을 고치게 된다**(실측 4건은 전부 화면 설계서가 고칠 자리였다:
+// 서버를 거치는 동작인데 `target: client`로 적혀 있어 요청서 생성에서 빠졌고, 그래서 담기·빼기가 저장되지 않았다).
+if (basisNotInReq.length) {
+  const bucket = { screen: [], stale: [], untargeted: [] };
+  for (const x of basisNotInReq) {
+    const t = x.io && x.io.target ? String(x.io.target).split('.')[0] : null;
+    if (!t) bucket.untargeted.push(x);
+    else if (t === 'server') bucket.stale.push(x);
+    else bucket.screen.push(x);                              // client·local — 화면 설계서가 고칠 자리
+  }
+  report(`\n  ⚠ 요청서에 없는 동작을 근거로 든 인터페이스 ${basisNotInReq.length}건 — 요구 → 계약 흐름을 안 탔다`);
+  const show = (list, head, ...how) => {
+    if (!list.length) return;
+    report(`     ${head} (${list.length}건)`);
+    for (const x of list.slice(0, CAP(list.length))) report(`       · ${x.itfId} → ${x.ref}`);
+    if (!verbose && list.length > 5) report(`       · 외 ${list.length - 5}건 (--verbose로 전부)`);
+    for (const line of how) report(`       ${line}`);
+  };
+  show(bucket.screen, '**화면 설계서를 고치세요** — 그 동작이 `client`/`local`로 적혀 있어 요청서에서 빠졌습니다',
+    '→ 서버를 거치는 동작이면 `target: server`로 바로잡고 요청서를 다시 뽑으세요.',
+    '→ **`ops`로 바꾸지 마세요.** 화면에 있는 동작이라 근거 갈래는 `screen-io`가 맞습니다.');
+  show(bucket.stale, '**요청서를 다시 뽑으세요** — 동작은 `server`인데 요청서에 안 실렸습니다',
+    '→ 화면을 고친 뒤 재생성을 안 돌렸을 때 이렇게 됩니다(`--emit-interface-request`).');
+  show(bucket.untargeted, '**`target`을 먼저 판정하세요** — 미분류라 요청서에 실릴지가 정해지지 않았습니다');
+  report('     ※ **화면 자체가 없는 요구**(배치·웹훅·정산·운영)라면 근거 갈래가 다릅니다 —');
+  report('        `{"kind": "ops", "ref": "…", "why": "…"}`로 적으세요(`why` 필수).');
+}
+
+// 계약 필드가 **같은 뜻을 다른 이름으로** 적고 있나. 스키마가 한쪽만 선언해 두어 나머지가 조용히 통과했다
+// (실측: 허용값 `values` 50 · `enum` 26 / 필수 `required` 295 · `optional` 2).
+// 소비자가 표준 이름만 읽으면 **별칭으로 적힌 것은 그 값이 없는 필드로 보인다.**
+// 지금 막지 않고 **집계만** 한다 — `additionalProperties: false`로 즉시 잠그면 990필드 문서가 그날로 실패한다.
+if (fieldAliases.length) {
+  const byAlias = new Map();
+  for (const x of fieldAliases) byAlias.set(x.alias, (byAlias.get(x.alias) || 0) + 1);
+  report(`\n  ⚠ 같은 뜻을 다른 이름으로 적은 계약 필드 ${fieldAliases.length}건 — **이관 필요**`);
+  report(`     ${[...byAlias.entries()].map(([k, v]) => `${k} ${v}건`).join(' · ')}`);
+  for (const x of fieldAliases.slice(0, CAP(fieldAliases.length))) {
+    report(`     · ${x.itfId} 의 ${x.field}: \`${x.alias}\` → \`${x.want}\``);
+  }
+  if (!verbose && fieldAliases.length > 5) report(`     · 외 ${fieldAliases.length - 5}건 (--verbose로 전부)`);
+  report('     → 표준 이름은 **허용값 `values` · 필수 여부 `required`**입니다.');
+  report('        소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 **그 값이 없는 필드로 보입니다.**');
 }
 
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
