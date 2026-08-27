@@ -1236,6 +1236,22 @@ expect_out "허용값 별칭(enum)을 집계한다" "enum 1건"
 expect_out "필수 여부 별칭(optional)도 집계한다" "optional 1건"
 expect_out "표준 이름을 알려준다" "허용값 \`values\` · 필수 여부 \`required\`"
 
+# (마) **수확된 적 없는 화면 문서**의 동작은 판정하지 않는다 — 한 트랙 요청서만 가진 리포에서
+#      그 트랙 전체가 통째로 위반으로 뜨는 오탐을 막는다. 요청서가 이 화면에서 나온 적이 없으면
+#      "아직 요청서가 없는 것"이지 근거가 틀린 것이 아니다.
+mkscr client
+sed -i 's|"path": "screens/user/screen-design-user-law.md"|"path": "screens/user/screen-design-user-other.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+sed -i 's|"ref": "IO.law.review.editList", "screen": "FEAT.law.review", "action": "법령 담기"|"ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_no_out "수확된 적 없는 화면의 동작은 근거 판정에서 빼둔다" "요청서에 없는 동작을 근거로"
+# 같은 화면이 한 번이라도 수확됐으면 다시 판정한다(위 제외가 검사를 통째로 끄지 않는다)
+sed -i 's|"path": "screens/user/screen-design-user-other.md"|"path": "screens/user/screen-design-user-law.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "그 화면이 수확되면 다시 판정한다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
+
 echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

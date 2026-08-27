@@ -656,13 +656,16 @@ for (const doc of loaded) {
 }
 
 // 요청서에 실제로 실린 요구 목록. **아래 basis 대조의 기준**이다.
-// 요청서가 하나도 없는 세트(백엔드만 있는 리포 등)에서는 판정할 근거가 없으므로 그 검사를 건너뛴다.
 const reqRefs = new Set();
-let reqDocCount = 0;
+// **어느 화면 설계서가 요청서로 수확됐나**(`from[].path`). 이게 대조의 게이트다 —
+// "요청서가 하나라도 있으면 판정한다"로 잡으면, **한 트랙 요청서만 가진 리포**(사용자 앱 요청서는 있는데
+// 백오피스 것은 없는 사본 등)에서 그 트랙 전체가 통째로 위반으로 뜬다. 수확된 적 없는 화면 문서의 동작은
+// **아직 요청서가 없는 것**이지 근거가 틀린 것이 아니다.
+const harvested = new Set();
 for (const doc of loaded) for (const o of doc.blocks) {
   if (o.__parseError || !Array.isArray(o.requests)) continue;
-  reqDocCount++;
   for (const r of o.requests) if (r.ref) reqRefs.add(r.ref);
+  for (const f of (o.from || [])) if (f.path) harvested.add(f.path);
 }
 
 // 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
@@ -701,7 +704,8 @@ for (const b of beBasis) {
     // 요구 → 계약의 흐름을 타지 않은 인터페이스가 된다(실측: 요청이 이슈로 와서 근거 칸을 채우려고
     // 엉뚱한 동작 id를 갖다 붙였고, id가 실재하니 통과했다).
     // **고칠 자리가 둘로 갈리므로 갈래를 판정해 안내한다** — 안 그러면 엉뚱한 곳을 고친다.
-    if (reqDocCount && !reqRefs.has(b.ref)) basisNotInReq.push({ ...b, io: ioById.get(b.ref) });
+    const io = ioById.get(b.ref);
+    if (io && harvested.has(io.doc) && !reqRefs.has(b.ref)) basisNotInReq.push({ ...b, io });
   } else if (b.kind === 'policy') {
     refChecked++; if (!reg.pol.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → policy.rules에 없음`); dead++; }
   } else if (b.kind === 'ops' || b.kind === 'legacy') {
