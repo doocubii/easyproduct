@@ -1588,5 +1588,79 @@ expect_out "옛 생성기로 뽑힌 요청서를 잡는다" "생성기가 자란
 expect_out "다른 검사는 조용하다는 것을 밝힌다" "화면은 그대로라 다른 검사는 아무 말도 하지 않습니다"
 
 echo
+echo "[32] 파생물에는 '개정을 올려라'라고 하지 않는다 (할 수 없는 일을 시키지 않는다)"
+# 요청서는 통째로 다시 뽑히므로 사람이 개정을 매길 자리가 없다. 그래도 내용이 바뀐 건 사실이라
+# 하류(계약) 재검토는 필요하다 — 신호는 살리고 지시만 가른다.
+# 뭉뚱그리면 매 재생성마다 못 할 일을 시켜서 경고가 통째로 무시된다.
+DV="$WORK/derived"
+mkdir -p "$DV/screens/user/schemas" "$DV/interface-requests/user/schemas" "$DV/reference/reviews" "$DV/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$DV/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$DV/interface-requests/user/schemas/"
+rvsrc="$(find "$HERE/../.." -name "review.v1.schema.json" | head -1)"
+[ -n "$rvsrc" ] && cp "$rvsrc" "$DV/schemas/"
+cat > "$DV/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$DV" --emit-interface-request --scope user --domain auth \
+  > "$DV/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+# 요청서가 **상류**가 되려면 그것을 근거로 삼는 계약이 있어야 한다(없으면 파장 계산에서 빠진다)
+mkdir -p "$DV/ssot/backend/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$DV/ssot/backend/schemas/"
+cat > "$DV/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{"scope":"user","domain":"auth","interfaces":[{"id":"BEITF.user.auth.login","summary":"로그인","transport":"rest","binding":{"method":"POST","path":"/auth/login"},"auth":{"mode":"session","desc":"로그인 전"},"request":{"fields":[]},"response":{"fields":[]},"basis":[{"kind":"screen-io","ref":"IO.auth.login.submit"}]}]}
+```
+MD
+
+# 리뷰 기준선을 만들되 요청서 해시를 **일부러 옛것으로** 둔다(= 그 뒤 다시 뽑힌 상태)
+cat > "$DV/reference/reviews/review-2026-08-28.md" <<'MD'
+---
+doc_type: review
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: review.record
+  schema: ../../schemas/review.v1.schema.json
+---
+```json review.record
+{ "reviewedAt": "2026-08-28", "trigger": "세트 최초 완성",
+  "sources": [ { "path": "interface-requests/user/interface-request-user-auth.md", "revision": 1, "contentHash": "sha256:0000" } ],
+  "checked": [ { "from": "screens/user/screen-design-user-auth.md", "to": "interface-requests/user/interface-request-user-auth.md", "result": "반영함" } ] }
+```
+MD
+node "$CHECK" "$DV" > "$WORK/out.txt" 2>&1
+expect_out "파생물이 바뀐 것은 알린다(하류 재검토)" "다시 뽑혀 바뀜 — 하류 재검토 필요"
+expect_out "왜 개정을 안 올리는지 밝힌다" "파생물이라 개정 번호를 사람이 올리지 않습니다"
+expect_no_out "파생물에 개정을 올리라고 하지 않는다" "개정 번호 없이 수정됨"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

@@ -366,7 +366,7 @@ ssot/ia-backoffice.md   백오피스 IA    — 자기 frontmatter + revision + i
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.12.2`
+- **버전**: `0.12.3`
 - **릴리즈 날짜**: 2026-08-28
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0

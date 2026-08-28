@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 // 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
 // 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
 // **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
-const TOOL_VERSION = '0.12.2';
+const TOOL_VERSION = '0.12.3';
 
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
@@ -532,11 +532,15 @@ for (const doc of loaded) {
 
 // 문서별 현재 상태(개정 번호·내용 해시) — 신선도 판정과 요청서의 출처 스냅샷이 함께 쓴다.
 const cur = new Map();   // path → {revision, hash}
+// **파생물**(통째로 다시 뽑히는 산출물). 사람이 개정을 매길 자리가 없으므로 개정 지시를 하지 않는다.
+const DERIVED_TYPES = new Set(['interface-request']);
+const docTypeOf = new Map(); // path → doc_type
 for (const d of allDocs) {
   try {
     const text = fs.readFileSync(path.resolve(root, d.path), 'utf8');
     const fm = parseFrontmatter(text) || {};
     const rev = fm.revision == null ? null : Number(fm.revision);
+    docTypeOf.set(d.path, d.docType);
     cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
   } catch { /* 위에서 이미 보고됨 */ }
 }
@@ -1497,7 +1501,15 @@ report('\n[3] 파장 · 신선도');
           if (c.revision == null) report('     (문서에 revision을 넣으면 "결정 변경"과 "문구 수정"을 구분할 수 있다)');
         } else if (hashChanged) {
           silent++;
-          report(`  ⚠ ${up} 이 개정 번호 없이 수정됨(r${c.revision} 그대로) — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+          // **파생물에는 "개정을 올려라"라고 하지 않는다 — 할 수 없는 일이다.** 요청서는 통째로 다시
+          // 뽑히므로 사람이 개정을 매길 자리가 없고, 그래도 내용이 바뀐 건 사실이라 **하류 재검토는 필요하다**.
+          // 신호는 살리고 지시만 가른다(뭉뚱그리면 매 재생성마다 못 할 일을 시켜 경고가 무시된다).
+          if (DERIVED_TYPES.has(docTypeOf.get(up))) {
+            report(`  ⚠ ${up} 이 다시 뽑혀 바뀜 — 하류 재검토 필요: ${[...downs].join(', ')}`);
+            report('     (파생물이라 개정 번호를 사람이 올리지 않습니다 — 바뀐 요구가 계약에 반영됐는지만 보세요)');
+          } else {
+            report(`  ⚠ ${up} 이 개정 번호 없이 수정됨(r${c.revision} 그대로) — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+          }
         }
       }
       if (unpinned) report(`  · 리뷰 기준선에 없는 상류 ${unpinned}개(그 문서들은 신선도 판정 불가 — 다음 리뷰에서 sources에 넣으세요)`);
