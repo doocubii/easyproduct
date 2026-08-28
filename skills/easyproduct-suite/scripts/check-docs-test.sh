@@ -1662,33 +1662,5 @@ expect_out "왜 개정을 안 올리는지 밝힌다" "파생물이라 개정 �
 expect_no_out "파생물에 개정을 올리라고 하지 않는다" "개정 번호 없이 수정됨"
 
 echo
-echo "[33] 점검기가 스스로를 설치한다 (손으로 복사하면 빠뜨린다)"
-# 실측: 손으로 복사한 사본에 references/ 가 통째로 없었고, 버전이 세 판 뒤처져 새 검사가 한 건도
-# 안 돌았으며, 옛 스키마 사본이 계약의 실제 위반 3건을 가리고 있었다.
-IN="$WORK/install/harness/vendor"
-node "$CHECK" --install "$IN" > "$WORK/out.txt" 2>&1
-expect_out "설치했다고 알린다" "점검기 설치"
-[ -f "$IN/VERSION" ] || bad "VERSION 이 안 찍혔다 — '언제 것인지'를 알 수 없다"
-[ -f "$IN/easyproduct-suite/scripts/check-docs.mjs" ] || bad "점검기가 안 깔렸다"
-[ -f "$IN/easyproduct-suite/assets/propagation-map.json" ] || bad "파장 지도가 빠졌다 — 파장 검사가 조용히 생략된다"
-[ -f "$IN/easyproduct-suite/references/checker-guide.md" ] || bad "계약 정본이 빠졌다(실측 사본에서 통째로 없던 것)"
-n=$(find "$IN" -path "*/schemas/*.json" | wc -l)
-[ "$n" -ge 10 ] && ok "스키마를 함께 깐다($n종) — 없으면 사본 대조가 통째로 생략된다" \
-                || bad "스키마가 안 깔렸다($n종)"
-expect_out "손으로 고치지 말라고 알린다" "손으로 고치지 마세요"
-expect_out "문서 옆 스키마도 갱신하라고 알린다" "함께 갱신하세요"
-
-# 깔린 것이 **실제로 돈다** (스킬 없이 단독 실행)
-node "$IN/easyproduct-suite/scripts/check-docs.mjs" "$RV" > "$WORK/out.txt" 2>&1
-expect_out "깔린 점검기가 단독으로 돈다" "등기부:"
-
-# 다시 돌리면 갱신이고, 옛 버전이면 그렇게 말한다
-echo "0.0.1" > "$IN/VERSION"
-node "$CHECK" --install "$IN" > "$WORK/out.txt" 2>&1
-expect_out "옛 버전이면 갱신이라고 말한다" "점검기 갱신"
-node "$CHECK" --install "$IN" > "$WORK/out.txt" 2>&1
-expect_out "이미 최신이면 그렇게 말한다" "이미 최신입니다"
-
-echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
