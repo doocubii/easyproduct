@@ -226,6 +226,10 @@ const reqTransport = argVal('--transport');
 const reqScope = argVal('--scope');
 const reqDomain = argVal('--domain');
 const listDomains = args.includes('--list-domains');
+// 항목 단위 개정. **사람이 적게 하면 빈다** — 실측: 계약 130건 중 117건(90%)이 근거를 한 줄만 적었고,
+// 그걸 근거로 만든 검사의 "미해결 9건"이 전부 오탐이었다. 그래서 **스크립트가 계산하고 사람은 올리기만** 한다.
+const syncRev = args.includes('--sync-revisions');
+const checkRev = args.includes('--check-revisions');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
@@ -235,6 +239,8 @@ if (!root) {
   console.error('  --emit-interface-request --scope <범위> --domain <도메인> [--transport rest|grpc|graphql|ws|queue]');
   console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
   console.error('                       요청서는 **출처 화면 문서 1개당 1개**다(범위·도메인별로 갈린다).');
+  console.error('  --sync-revisions  : 인터페이스마다 개정 번호를 계산해 interface-revisions.json 에 기록(파일을 쓴다)');
+  console.error('  --check-revisions : 기록된 개정 번호가 지금 계약과 맞는지 **대조만** 한다(CI용, 어긋나면 1)');
   console.error('  --emit-interface-request --scope <범위> --list-domains');
   console.error('                     : 그 범위에서 요청서를 뽑을 도메인 목록을 출력(호출 측이 돌면서 뽑는다)');
   process.exit(2);
@@ -833,6 +839,80 @@ if (fieldAliases.length) {
   report('        소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 **그 값이 없는 필드로 보입니다.**');
 }
 
+// ── 인터페이스 항목 단위 개정 ──────────────────────────────────────────────
+// 계약 문서 하나에 인터페이스가 20개 넘게 살면, **문서 단위 `revision`으로는 소비자가 "내가 맞춘 판이
+// 아직 유효한가"를 물을 수 없다.** 그렇다고 사람에게 항목마다 적으라고 하면 빈다(실측: 130건 중 117건이
+// 근거를 한 줄만 적었고, 그걸 근거로 만든 검사의 "미해결 9건"이 전부 오탐이었다).
+// 그래서 **스크립트가 계약 내용의 해시로 계산**하고, 사람은 **더 올릴 수만** 있다.
+const REV_FILE = 'interface-revisions.json';
+const revPath = path.join(root, REV_FILE);
+// 개정 계산에 넣는 것은 **계약 내용뿐**이다. `basis`(근거)·`notes`·산문 위치는 바뀌어도 계약이 바뀐 게 아니다.
+const CONTRACT_KEYS = ['id', 'transport', 'binding', 'method', 'path', 'auth', 'request', 'response', 'errors', 'async', 'idempotency'];
+const canon = (v) => {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v).sort()) o[k] = canon(v[k]);
+    return o;
+  }
+  return v;
+};
+const itfHash = (i) => {
+  const picked = {};
+  for (const k of CONTRACT_KEYS) if (i[k] !== undefined) picked[k] = canon(i[k]);
+  return 'sha256:' + crypto.createHash('sha256').update(JSON.stringify(picked)).digest('hex');
+};
+const liveItf = [];
+for (const doc of loaded) for (const o of doc.blocks) {
+  if (o.__parseError) continue;
+  for (const i of (o.interfaces || [])) liveItf.push({ id: i.id, hash: itfHash(i), stated: i.revision ?? null, doc: doc.path });
+}
+if (liveItf.length) {
+  let snap = null;
+  try { snap = JSON.parse(fs.readFileSync(revPath, 'utf8')); } catch { snap = null; }
+  const prev = (snap && snap.interfaces) || {};
+  const next = {};
+  const bumped = [], fresh = [], lowered = [], raised = [];
+  for (const x of liveItf) {
+    const was = prev[x.id];
+    // 계산 규칙: 없던 것 → 1 / 계약이 그대로 → 유지 / 계약이 바뀜 → +1.
+    // **옛 세트를 채울 때 과거 이력을 지어내지 않는다** — 몇 번 고쳐졌든 지금을 1세대로 본다.
+    let rev = !was ? 1 : (was.hash === x.hash ? was.revision : was.revision + 1);
+    if (!was) fresh.push(x); else if (was.hash !== x.hash) bumped.push({ ...x, from: was.revision, to: rev });
+    // 사람은 **더 올릴 수만** 있다 — 기계가 못 보는 변경(필드는 그대로인데 뜻이 바뀐 것)의 통로다.
+    if (x.stated != null) {
+      if (x.stated > rev) { raised.push({ ...x, to: x.stated }); rev = x.stated; }
+      else if (x.stated < rev) lowered.push({ ...x, computed: rev });
+    }
+    next[x.id] = { revision: rev, hash: x.hash };
+  }
+  for (const x of lowered) {
+    report(`  ❌ ${x.doc}: ${x.id} 의 revision ${x.stated} 가 계산값 ${x.computed} 보다 작습니다 — 개정은 내려가지 않습니다`);
+    dead++;
+  }
+  const drift = bumped.length + fresh.length;
+  if (syncRev) {
+    const out = { generatedBy: 'check-docs', note: '인터페이스 항목 단위 개정 번호. 스크립트가 계산한다 — 손으로 고치지 말고, 올릴 일이 있으면 계약 문서의 interfaces[].revision 에 적으세요.', interfaces: next };
+    fs.writeFileSync(revPath, JSON.stringify(out, null, 2) + '\n');
+    report(`\n  ✅ ${REV_FILE} 기록 — 인터페이스 ${liveItf.length}건 (새로 ${fresh.length} · 개정 ${bumped.length} · 사람이 올림 ${raised.length})`);
+  } else if (!snap) {
+    report(`\n  ⚠ 항목 단위 개정 기록이 없습니다(${REV_FILE}) — 인터페이스 ${liveItf.length}건`);
+    report('     소비자가 "내가 맞춘 판이 아직 유효한가"를 물을 자리가 없습니다.');
+    report('     → `--sync-revisions` 를 한 번 돌리면 전부 **개정 1**로 시작합니다.');
+    report('        (과거 이력은 지어내지 않습니다 — 몇 번 고쳐졌든 지금을 1세대로 봅니다.)');
+    if (checkRev) problems.push('revision');
+  } else if (drift) {
+    report(`\n  ⚠ 개정 번호가 지금 계약과 어긋납니다 — 기록되지 않은 변경 ${drift}건`);
+    for (const x of bumped.slice(0, CAP(bumped.length))) report(`     · ${x.id} — 계약이 바뀌었습니다 (개정 ${x.from} → ${x.to})`);
+    for (const x of fresh.slice(0, CAP(fresh.length))) report(`     · ${x.id} — 기록에 없는 새 인터페이스 (개정 1)`);
+    if (!verbose && drift > 5) report(`     · 외 ${drift - 5}건 (--verbose로 전부)`);
+    report('     → `--sync-revisions` 로 기록을 갱신하세요. 소비자는 이 파일로 판이 유효한지 봅니다.');
+    if (checkRev) problems.push('revision');
+  } else {
+    report(`\n  ✅ 항목 단위 개정 ${liveItf.length}건 — 기록과 일치` + (raised.length ? ` (사람이 올린 것 ${raised.length}건 포함)` : ''));
+  }
+}
+
 report(`  참조 ${refChecked}건 확인, 죽은 링크 ${dead}건` + (refChecked === 0 ? ' (참조를 담은 문서 없음)' : ''));
 if (dead) problems.push('deadlink');
 
@@ -1071,6 +1151,38 @@ if (emitReq) {
     })(),
     '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
   ].join('\n');
+  // **재생성은 손으로 적은 것을 지운다.** 요청서는 파생물이라 통째로 다시 만들어지는데, 계약 문서는
+  // 손질하는 곳이라 성질이 반대다 — 같은 규약으로 덮으면 **요청서 쪽에서만 조용히 샌다**(실사용 제보:
+  // 스키마에 없는 키를 손으로 넣었는데 다음 생성 때 사라졌다). 지우기 전에 **무엇이 지워지는지 알린다.**
+  const outPath = path.join(root, 'interface-requests', reqScope, `interface-request-${reqScope}-${reqDomain}.md`);
+  if (fs.existsSync(outPath)) {
+    try {
+      const oldTxt = fs.readFileSync(outPath, 'utf8');
+      const m = /```json\s+interface\.requests\n([\s\S]*?)```/.exec(oldTxt);
+      const oldBlock = m ? JSON.parse(m[1]) : null;
+      if (oldBlock && Array.isArray(oldBlock.requests)) {
+        // 생성기가 **낼 수 있는 키**의 집합. 여기 없는 키가 옛 파일에 있으면 사람이 손으로 넣은 것이다.
+        const emitted = new Set();
+        for (const r of block.requests) for (const k of Object.keys(r)) emitted.add(k);
+        for (const k of ['ref', 'screen', 'action', 'target', 'ui', 'auth', 'sends', 'transientSends',
+                         'receives', 'transientReceives', 'policies', 'semantics', 'frame', 'appliesTo']) emitted.add(k);
+        const lost = [];
+        const byRef = new Map(block.requests.map((r) => [r.ref, r]));
+        for (const r of oldBlock.requests) {
+          for (const k of Object.keys(r)) if (!emitted.has(k)) lost.push({ ref: r.ref, key: k });
+          if (!byRef.has(r.ref)) lost.push({ ref: r.ref, key: '(요구 자체)' });
+        }
+        if (lost.length) {
+          console.error(`⚠ 재생성이 지웁니다 — 지금 파일에만 있는 것 ${lost.length}건 (${outPath.replace(root + '/', '')})`);
+          for (const x of lost.slice(0, CAP(lost.length))) console.error(`   · ${x.ref} 의 ${x.key}`);
+          if (!verbose && lost.length > 5) console.error(`   · 외 ${lost.length - 5}건 (--verbose로 전부)`);
+          console.error('   → 요청서는 **파생물**이라 손으로 적으면 다음 생성 때 사라집니다.');
+          console.error('      남겨야 할 내용이면 **원본(화면 설계서)에 적고** 다시 뽑으세요.');
+          console.error('      "(요구 자체)"는 화면에서 그 동작이 없어졌거나 `target`이 서버가 아니게 된 것입니다.');
+        }
+      }
+    } catch { /* 옛 파일을 못 읽으면 알림만 못 낼 뿐, 생성은 막지 않는다 */ }
+  }
   console.log(out);
   process.exit(0);
 }

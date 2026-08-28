@@ -50,25 +50,30 @@
             "pattern": "^BEITF\\.(user|bo|internal)\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*(\\.[a-z][a-zA-Z0-9]*)?$",
             "description": "인터페이스 anchor. BEITF.<scope>.<도메인>.<이름>[.<verb>]. 한 번 부여하면 바꾸지 않는다 — 다른 문서·코드가 이 ID로 참조한다."
           },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "이 **인터페이스 하나**의 개정 번호. 문서 전체의 frontmatter `revision`과 **다른 자리**다 — 계약 문서 하나에 인터페이스가 20개 넘게 살면, 문서 단위 개정으로는 소비자가 '**내가 맞춘 판이 아직 유효한가**'를 물을 수 없다. **`version`과도 다르다** — `version`은 payload 스키마의 계약 버전이라 내용이 바뀌어도 안 오른다(실제로 이 축이 뒤섞여 v1 스키마 문서에 `version: 13`이 박힌 사고가 있었다). **보통은 적지 않는다** — 점검기가 계약 내용의 해시로 계산해 `interface-revisions.json`에 기록하고, 그 파일이 정본이다. 여기 적는 것은 **사람이 더 올릴 때뿐**이다: 필드는 그대로인데 **뜻이 바뀐 경우**(기계가 못 보는 변경). 계산값보다 **작게 적으면 오류**다 — 개정은 내려가지 않는다."
+          },
           "summary": {
             "type": "string",
             "description": "이 인터페이스가 무엇을 하는지 한 줄."
           },
-          "method": {
+          "transport": {
             "enum": [
-              "GET",
-              "POST",
-              "PUT",
-              "PATCH",
-              "DELETE",
-              "HEAD",
-              "OPTIONS"
+              "rest",
+              "grpc",
+              "graphql",
+              "ws",
+              "queue",
+              "other"
             ],
-            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.method` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+            "description": "이 인터페이스가 오가는 전송 방식. 전송마다 규격의 모양이 달라 binding 에 담는다. 문서 전체가 한 전송이어도 인터페이스마다 적는다(혼합이 흔하다)."
           },
-          "path": {
-            "type": "string",
-            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.path` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          "binding": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "그 전송에 걸맞은 규격. **전송별로 담아야 할 키가 다르다** — rest: {method, path, status} · grpc: {service, rpc, requestMessage, responseMessage} · graphql: {operationType, fieldName} · ws: {channel, event} · queue: {topic, key, deliveryGuarantee}. 비워 두면 '어떻게 부르는지'가 없는 계약이 되므로 최소 1개는 필수다. (조건부 검증은 이 세트 검증기의 범위 밖이라, 전송별 필수 키는 스킬 지침이 규정하고 LLM 층이 본다.)"
           },
           "auth": {
             "type": "object",
@@ -350,53 +355,6 @@
             },
             "description": "이 인터페이스가 쓰는 저장소 BESTORE.*. 실재해야 한다."
           },
-          "async": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "이 인터페이스가 오래 걸리는 일을 비동기로 넘길 때의 계약. 동기면 생략.",
-            "properties": {
-              "kind": {
-                "enum": [
-                  "job",
-                  "stream",
-                  "webhook"
-                ],
-                "description": "비동기 방식."
-              },
-              "desc": {
-                "type": "string",
-                "description": "무엇을 넘기고 결과를 어떻게 받는지."
-              },
-              "statusEndpoint": {
-                "type": "string",
-                "description": "진행·결과를 조회하는 인터페이스 BEITF.*."
-              }
-            }
-          },
-          "idempotency": {
-            "type": "string",
-            "description": "같은 요청이 두 번 와도 안전한가 — 안전하다면 무엇으로 판정하는지(키·자연키). 쓰기 인터페이스면 반드시 적는다."
-          },
-          "notes": {
-            "type": "string",
-            "description": "그 밖에 구현자가 알아야 할 것(근거 문서와 다르게 확정한 이유 등)."
-          },
-          "transport": {
-            "enum": [
-              "rest",
-              "grpc",
-              "graphql",
-              "ws",
-              "queue",
-              "other"
-            ],
-            "description": "이 인터페이스가 오가는 전송 방식. 전송마다 규격의 모양이 달라 binding 에 담는다. 문서 전체가 한 전송이어도 인터페이스마다 적는다(혼합이 흔하다)."
-          },
-          "binding": {
-            "type": "object",
-            "minProperties": 1,
-            "description": "그 전송에 걸맞은 규격. **전송별로 담아야 할 키가 다르다** — rest: {method, path, status} · grpc: {service, rpc, requestMessage, responseMessage} · graphql: {operationType, fieldName} · ws: {channel, event} · queue: {topic, key, deliveryGuarantee}. 비워 두면 '어떻게 부르는지'가 없는 계약이 되므로 최소 1개는 필수다. (조건부 검증은 이 세트 검증기의 범위 밖이라, 전송별 필수 키는 스킬 지침이 규정하고 LLM 층이 본다.)"
-          },
           "basis": {
             "type": "array",
             "minItems": 1,
@@ -429,6 +387,53 @@
                 }
               }
             }
+          },
+          "notes": {
+            "type": "string",
+            "description": "그 밖에 구현자가 알아야 할 것(근거 문서와 다르게 확정한 이유 등)."
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.method` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "path": {
+            "type": "string",
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.path` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "async": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "이 인터페이스가 오래 걸리는 일을 비동기로 넘길 때의 계약. 동기면 생략.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "job",
+                  "stream",
+                  "webhook"
+                ],
+                "description": "비동기 방식."
+              },
+              "desc": {
+                "type": "string",
+                "description": "무엇을 넘기고 결과를 어떻게 받는지."
+              },
+              "statusEndpoint": {
+                "type": "string",
+                "description": "진행·결과를 조회하는 인터페이스 BEITF.*."
+              }
+            }
+          },
+          "idempotency": {
+            "type": "string",
+            "description": "같은 요청이 두 번 와도 안전한가 — 안전하다면 무엇으로 판정하는지(키·자연키). 쓰기 인터페이스면 반드시 적는다."
           }
         }
       }
