@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 // 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
 // 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
 // **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
-const TOOL_VERSION = '0.12.5';
+const TOOL_VERSION = '0.12.6';
 
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
@@ -246,6 +246,66 @@ function discover(root) {
   return { via: 'scan', docs };
 }
 
+// ── 벤더 설치 ─────────────────────────────────────────────────────────────
+// **폴더 구조를 그대로 미러한다.** 점검기가 자기 위치 기준(`../..`)으로 자산·스키마를 찾기 때문에,
+// 평평하게 두면 파장 지도와 스키마 사본 대조가 **조용히 생략된다**(경고 없이 검사가 사라진다).
+function installKit(dest) {
+  const SUITE = path.join(SKILLS_ROOT, 'easyproduct-suite');
+  if (!fs.existsSync(SUITE)) {
+    console.error('❌ 스킬 트리를 찾을 수 없습니다 — 설치는 스킬이 깔린 곳에서 실행해야 합니다.');
+    process.exit(2);
+  }
+  const prev = (() => { try { return fs.readFileSync(path.join(dest, 'VERSION'), 'utf8').trim(); } catch { return null; } })();
+  const written = [];
+  const put = (from, to) => {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    const changed = !fs.existsSync(to) || fs.readFileSync(to).compare(fs.readFileSync(from)) !== 0;
+    fs.copyFileSync(from, to);
+    written.push({ rel: path.relative(dest, to), changed });
+  };
+
+  // ① 점검기 ② 자산(파장 지도·앵커 등기부) ③ 계약 정본
+  put(path.join(SUITE, 'scripts', 'check-docs.mjs'), path.join(dest, 'easyproduct-suite', 'scripts', 'check-docs.mjs'));
+  for (const f of ['propagation-map.json', 'anchor-prefixes.json']) {
+    const src = path.join(SUITE, 'assets', f);
+    if (fs.existsSync(src)) put(src, path.join(dest, 'easyproduct-suite', 'assets', f));
+  }
+  const guide = path.join(SUITE, 'references', 'checker-guide.md');
+  if (fs.existsSync(guide)) put(guide, path.join(dest, 'easyproduct-suite', 'references', 'checker-guide.md'));
+
+  // ④ **스키마 전부.** 이게 없으면 "사본이 스킬 자산과 다름" 대조가 통째로 생략돼,
+  //    문서 옆 사본이 뒤처져도 아무도 모른다(실측에서 계약 위반 3건이 그렇게 가려졌다).
+  let schemaCount = 0;
+  for (const skill of fs.readdirSync(SKILLS_ROOT)) {
+    const dir = path.join(SKILLS_ROOT, skill, 'schemas');
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      put(path.join(dir, f), path.join(dest, skill, 'schemas', f));
+      schemaCount++;
+    }
+  }
+
+  fs.mkdirSync(dest, { recursive: true });
+  fs.writeFileSync(path.join(dest, 'VERSION'), TOOL_VERSION + '\n');
+  const changed = written.filter((w) => w.changed);
+
+  console.log(prev === null
+    ? `✅ 점검기 설치 — ${dest} (버전 ${TOOL_VERSION})`
+    : prev === TOOL_VERSION
+      ? `✅ 이미 최신입니다 — ${dest} (버전 ${TOOL_VERSION})`
+      : `✅ 점검기 갱신 — ${dest} (${prev} → ${TOOL_VERSION})`);
+  console.log(`   점검기 1 · 자산·계약서 ${written.length - schemaCount - 1} · 스키마 ${schemaCount} · 바뀐 파일 ${changed.length}`);
+  if (changed.length && prev !== null) {
+    for (const w of changed.slice(0, 8)) console.log(`     · ${w.rel}`);
+    if (changed.length > 8) console.log(`     · 외 ${changed.length - 8}개`);
+  }
+  console.log('');
+  console.log('   쓰는 법:  node ' + path.join(path.relative(process.cwd(), dest) || '.', 'easyproduct-suite/scripts/check-docs.mjs') + ' <문서루트>');
+  console.log('   ⚠ **파일을 손으로 고치지 마세요** — 다음 갱신 때 사라지고, 그 사이 이곳만 다른 검사를 돌게 됩니다.');
+  console.log('   ⚠ **문서 옆 `schemas/*.json` 도 함께 갱신하세요** — 안 하면 새 검사가 조용히 안 돕니다.');
+}
+
 // ── 메인 ──
 const args = process.argv.slice(2);
 const printSnapshot = args.includes('--print-snapshot');
@@ -260,10 +320,18 @@ const reqTransport = argVal('--transport');
 const reqScope = argVal('--scope');
 const reqDomain = argVal('--domain');
 const listDomains = args.includes('--list-domains');
+// 점검기를 **대상 프로젝트에 설치**한다(벤더 사본). CI·다른 개발자 기계에는 스킬이 없으므로,
+// 이 도구가 **스스로를 복사**한다 — 사람이나 에이전트가 파일을 빠뜨릴 여지를 없앤다
+// (실측: 손으로 복사한 사본에 `references/`가 통째로 빠져 있었고, 버전이 세 판 뒤처져 새 검사가
+// 한 건도 안 돌았으며, 옛 스키마 사본이 계약의 실제 위반 3건을 가리고 있었다).
+const installTo = argVal('--install');
 // 항목 단위 개정. **사람이 적게 하면 빈다** — 실측: 계약 130건 중 117건(90%)이 근거를 한 줄만 적었고,
 // 그걸 근거로 만든 검사의 "미해결 9건"이 전부 오탐이었다. 그래서 **스크립트가 계산하고 사람은 올리기만** 한다.
 const syncRev = args.includes('--sync-revisions');
 const checkRev = args.includes('--check-revisions');
+// 설치는 **문서 세트가 없어도** 동작한다(빈 저장소에 먼저 깔 수 있어야 한다).
+if (installTo) { installKit(installTo); process.exit(0); }
+
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
@@ -273,6 +341,7 @@ if (!root) {
   console.error('  --emit-interface-request --scope <범위> --domain <도메인> [--transport rest|grpc|graphql|ws|queue]');
   console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
   console.error('                       요청서는 **출처 화면 문서 1개당 1개**다(범위·도메인별로 갈린다).');
+  console.error('  --install <경로>   : 점검기·자산·스키마를 그 폴더에 설치(벤더 사본). 다시 돌리면 갱신된다');
   console.error('  --sync-revisions  : 인터페이스마다 개정 번호를 계산해 interface-revisions.json 에 기록(파일을 쓴다)');
   console.error('  --check-revisions : 기록된 개정 번호가 지금 계약과 맞는지 **대조만** 한다(CI용, 어긋나면 1)');
   console.error('  --emit-interface-request --scope <범위> --list-domains');
