@@ -1479,5 +1479,69 @@ expect_out "어느 키인지 짚는다" "IO.auth.login.submit 의 items"
 expect_out "원본에 적으라고 안내한다" "원본(화면 설계서)에 적고"
 
 echo
+echo "[29] 일회성 결과가 **수확 → 백엔드 입력 → 요청서**까지 실려 나가나 (층 끝까지)"
+# 도그푸드에서 잡힌 결함: 스키마·검사·생성 코드는 다 있었는데 **수확부(screenIo)가 안 담아서**
+# --emit-needs 와 요청서 표가 늘 비어 있었다. 블록에 적어도 백엔드는 그 요구를 영영 모른다.
+# 회귀가 "블록이 스키마를 통과하나"만 봤기 때문에 통과했다 — 끝까지 따라가는 시험이 없었다.
+TR="$WORK/transrecv"
+mkdir -p "$TR/screens/user/schemas" "$TR/interface-requests/user/schemas" "$TR/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$TR/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$TR/interface-requests/user/schemas/"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$TR/ssot/schemas/"
+cat > "$TR/screens/user/screen-design-user-order.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.order.list", "feat": "FEAT.order.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.order.list.load", "action": "목록 조회", "target": "server",
+      "auth": { "required": true }, "sends": [], "receives": [],
+      "transientReceives": [ { "name": "totalCount", "desc": "전체 건수" } ] } ] } } ] }
+```
+MD
+node "$CHECK" "$TR" --emit-needs > "$WORK/needs.json" 2>/dev/null
+grep -qF "totalCount" "$WORK/needs.json" \
+  && ok "일회성 결과가 백엔드 입력(--emit-needs)에 실린다" \
+  || bad "일회성 결과가 --emit-needs 에서 빠졌다 — 백엔드는 그 요구를 모른다"
+node "$CHECK" "$TR" --emit-interface-request --scope user --domain order > "$WORK/req.md" 2>/dev/null
+grep -qF "totalCount" "$WORK/req.md" \
+  && ok "일회성 결과가 요청서 기계 블록·표에 실린다" \
+  || bad "일회성 결과가 요청서에서 빠졌다"
+grep -qF "일회성 결과" "$WORK/req.md" || bad "요청서 사람용 표에 '일회성 결과' 열이 없다"
+# 반대편: 없으면 키를 만들지 않는다(빈 배열을 실어 "생각했는데 없다"와 섞지 않는다)
+python3 - "$TR/screens/user/screen-design-user-order.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r',\s*\n\s*"transientReceives": \[[^\]]*\]', '', s)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+grep -q "transientReceives" "$TR/screens/user/screen-design-user-order.md" && bad "픽스처 편집이 안 먹었다"
+node "$CHECK" "$TR" --emit-interface-request --scope user --domain order > "$WORK/req2.md" 2>/dev/null
+grep -qF '"transientReceives"' "$WORK/req2.md" && bad "없는데도 transientReceives 키를 실었다" || ok "없으면 키를 만들지 않는다"
+
+echo
+echo "[30] 목록 컨테이너는 근거 갈래를 지지 않는다 (제대로 적은 문서가 벌받지 않게)"
+# 도그푸드에서 잡힌 오탐: items 로 원소 모양을 제대로 적은 목록 컨테이너까지 "근거 미기재"로 잡혔다.
+# 값의 근거는 원소 필드가 지고 컨테이너는 그릇일 뿐이다. 반대편(원소 모양이 없는 목록)은 여전히 잡아야 한다.
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"rows\",\"type\":\"list\",\"desc\":\"목록\",\"items\":{\"type\":\"object\",\"desc\":\"한 줄\",\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"번호\",\"dataModel\":\"law.id\"}]}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "items 를 갖춘 목록 컨테이너는 근거를 요구하지 않는다" "근거 갈래가 안 적힌"
+expect_no_out "그 컨테이너는 항목 모양 경고도 받지 않는다" "목록인데 항목 모양이 없는"
+# 반대편 — items 가 없으면 둘 다 잡는다(이 시험이 아무것도 안 하는 경우와 구분되게)
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"rows\",\"type\":\"list\",\"desc\":\"목록\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "items 가 없으면 항목 모양을 요구한다" "목록인데 항목 모양이 없는 계약 필드 1건"
+expect_out "items 가 없으면 근거 갈래도 요구한다" "근거 갈래가 안 적힌 계약 필드 1건"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

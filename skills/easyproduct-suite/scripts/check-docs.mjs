@@ -70,6 +70,29 @@ function scalarOrList(v) {
 }
 
 // ── JSON Schema 검증기 (이 세트 스키마가 쓰는 부분집합) ──
+// 정규식을 사람이 읽을 수 있는 한 줄로 바꾼다. 흔한 anchor 꼴은 **마디 수까지** 밝힌다 —
+// "패턴 위반"만으로는 `FEAT.a.b.c`가 왜 안 되는지 알 수 없다.
+function patternHint(pat) {
+  // 패턴을 마디로 갈라 **실제 형식**을 보여준다. 마디에는 두 갈래가 있다 —
+  // 리터럴(`BEARCH.mod.*`의 `mod`처럼 그 글자 그대로)과 자리(문자 클래스). 이걸 뭉뚱그려
+  // `<이름>`으로만 안내하면 **그대로 따라 해도 또 틀린다**(도그푸드에서 실제로 그랬다).
+  const body = pat.replace(/^\^/, '').replace(/\$$/, '');
+  if (!body.includes('\\.')) return `정규식 \`${pat}\`에 맞는 값`;
+  const NAMES = { FEAT: '기능', DATA: '데이터 그룹', POL: '정책 규칙', UI: 'UI 컴포넌트', SCN: '시나리오',
+                  IO: '화면 동작', FRAME: '공통 프레임', BEITF: '인터페이스', BESTORE: '저장소',
+                  BESCHEMA: '논리 테이블', BEARCH: '시스템 조각' };
+  const parts = body.split('\\.');
+  // 갈라진 마디가 전부 리터럴이거나 단순 자리여야 안내가 정확하다. 아니면 정규식을 그대로 보여준다.
+  const shown = [];
+  for (const seg of parts) {
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(seg)) shown.push(seg);                 // 리터럴 마디
+    else if (/^\[[^\]]+\]/.test(seg)) shown.push('<이름>');                   // 자리 마디
+    else return `정규식 \`${pat}\`에 맞는 값`;                                // 모르는 꼴은 지어내지 않는다
+  }
+  const what = NAMES[parts[0]] ? `${NAMES[parts[0]]} id` : 'id';
+  return `\`${shown.join('.')}\` 꼴의 ${what}`;
+}
+
 // `root`는 `$ref` 해석의 기준이다(스키마 최상위). 재귀할 때 함께 넘긴다.
 function validate(obj, schema, p, errs, root) {
   root = root || schema;
@@ -85,7 +108,11 @@ function validate(obj, schema, p, errs, root) {
   if (schema.const !== undefined && obj !== schema.const) errs.push(`${p} = ${JSON.stringify(obj)} (const ${JSON.stringify(schema.const)} 아님)`);
   if (schema.enum && !schema.enum.includes(obj)) errs.push(`${p} = ${JSON.stringify(obj)} (허용값 ${schema.enum.join('|')} 아님)`);
   if (schema.type && !typeOk(obj, schema.type)) { errs.push(`${p} 타입 ${schema.type} 아님`); return; }
-  if (schema.pattern && typeof obj === 'string' && !new RegExp(schema.pattern).test(obj)) errs.push(`${p} = "${obj}" (패턴 위반)`);
+  // **무엇을 어겼는지 말해 준다.** "패턴 위반"만 내면 규칙을 모르는 사람은 고칠 수가 없다
+  // (도그푸드에서 `FEAT.a.b.c`가 거절됐는데 마디가 몇 개여야 하는지 알 길이 없었다).
+  if (schema.pattern && typeof obj === 'string' && !new RegExp(schema.pattern).test(obj)) {
+    errs.push(`${p} = "${obj}" (형식이 다릅니다 — 이 값은 ${patternHint(schema.pattern)} 이어야 합니다)`);
+  }
   if (schema.type === 'array' && Array.isArray(obj)) {
     if (schema.minItems != null && obj.length < schema.minItems) errs.push(`${p} 항목 ${obj.length} < 최소 ${schema.minItems}`);
     if (schema.items) obj.forEach((it, i) => validate(it, schema.items, `${p}[${i}]`, errs, root));
@@ -456,7 +483,7 @@ for (const doc of loaded) {
         screenIo.push({ id: a.id || null, screen: fr.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, auth: a.auth || null,
                         sends: a.sends || [], transientSends: a.transientSends || [],
-                        receives: a.receives || [],
+                        receives: a.receives || [], transientReceives: a.transientReceives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: null,
                         frame: fr.id, appliesTo: fr.appliesTo || null, doc: doc.path });
       }
@@ -489,7 +516,7 @@ for (const doc of loaded) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, auth: a.auth || null,
                         sends: a.sends || [], transientSends: a.transientSends || [],
-                        receives: a.receives || [],
+                        receives: a.receives || [], transientReceives: a.transientReceives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
     }
@@ -720,7 +747,10 @@ for (const doc of loaded) {
           if (origins.length > 1) {
             report(`  ❌ ${doc.path}: ${i.id} 의 ${side}.${fl.name} 에 근거 갈래가 둘(${origins.join(' + ')}) — 하나만 적습니다`);
             dead++;
-          } else if (origins.length === 0 && !flatParents.has(bare)) {
+          } else if (origins.length === 0 && !flatParents.has(bare) && !fl.items) {
+            // `items`로 원소 모양을 적은 **목록 컨테이너**는 제외한다 — 값의 근거는 원소 필드가 지고,
+            // 컨테이너 자신은 담는 그릇일 뿐이다. 여기서 근거를 요구하면 **제대로 적은 문서가 벌을 받는다**
+            // (도그푸드에서 잡힌 오탐. 보고된 "컨테이너 45건"이 같은 갈래다).
             noOrigin.push({ itfId: i.id, field: `${side}.${fl.name}`, doc: doc.path });
           }
           // 파생은 **무엇으로부터 왔는지**가 등기부에 실재해야 한다.
@@ -1397,6 +1427,12 @@ report('\n[3] 파장 · 신선도');
       if (unknown.size) {
         report(`  ⚠ 파장 지도에 없는 문서 종류 ${unknown.size}종 — 이 문서들은 **파장 대상 밖**이다`);
         report(`     ${[...unknown.entries()].map(([t, c]) => `${t} ${c}건`).join(' · ')}`);
+        // **오타·비슷한 이름을 먼저 의심하게 한다.** 세트 표준 이름과 한 글자 차이인 경우가 실제로 있다
+        // (도그푸드에서 파일명이 `design-spec.md`라 `doc_type`도 `design-spec`으로 적었는데 정본은 `design-doc`이었다).
+        for (const t of unknown.keys()) {
+          const near = [...known].filter((k) => k !== t && (k.startsWith(t.split('-')[0] + '-') || t.startsWith(k.split('-')[0] + '-')));
+          if (near.length) report(`     · \`${t}\` — 혹시 \`${near.join('` 또는 `')}\` 인가요? (이름이 비슷합니다)`);
+        }
         report('     → 프로젝트 고유 문서면 매니페스트 항목에 `derivesFrom`(선택)으로 상류를 적어 주면 편입된다.');
         report('       세트 표준 문서인데 빠진 것이면 파장 지도(스킬 자산)를 고쳐야 한다.');
       }
