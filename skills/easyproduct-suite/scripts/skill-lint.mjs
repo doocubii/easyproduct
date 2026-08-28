@@ -210,6 +210,27 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   }
 }
 
+// --- (G) 점검기의 TOOL_VERSION 이 세트 버전과 같은가 -------------------------
+// 그 값이 생성물(`interface-request`)에 찍혀 나가고, 나중에 "생성기가 그 뒤 자랐나"를 판정하는 근거가 된다.
+// 어긋나면 **자란 뒤에도 조용히 통과**하거나 **안 자랐는데 다시 뽑으라고** 한다 — 둘 다 나쁘다.
+// (앵커 등기부·revision 정의와 같은 방식: 각자 값을 품고 여기서 대조해 드리프트를 막는다.)
+{
+  const checkerPath = join(SUITE_DIR, 'scripts', 'check-docs.mjs');
+  const suiteSkill = join(SUITE_DIR, 'SKILL.md');
+  try {
+    const declared = /const TOOL_VERSION = '([^']+)'/.exec(readFileSync(checkerPath, 'utf8'));
+    const meta = /^- \*\*버전\*\*: `([^`]+)`$/m.exec(readFileSync(suiteSkill, 'utf8'));
+    if (!declared) errors.push(`${rel(checkerPath)}: TOOL_VERSION 상수를 못 찾음(생성물 판 표시의 근거가 사라진다).`);
+    else if (!meta) errors.push(`${rel(suiteSkill)}: 메타 정보의 버전을 못 찾음(TOOL_VERSION 대조 불가).`);
+    else if (declared[1] !== meta[1]) {
+      errors.push(`check-docs.mjs 의 TOOL_VERSION(${declared[1]})이 suite SKILL.md 버전(${meta[1]})과 다름 — `
+        + `생성물에 찍히는 판 표시가 어긋나 "생성기가 자랐나" 판정이 틀린다. 버전업 때 함께 올려라.`);
+    } else notes.push(`TOOL_VERSION ${declared[1]} — 세트 버전과 일치.`);
+  } catch (e) {
+    errors.push(`TOOL_VERSION 대조 실패: ${e.message}`);
+  }
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);

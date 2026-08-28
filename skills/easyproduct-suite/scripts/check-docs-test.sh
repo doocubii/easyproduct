@@ -1543,5 +1543,50 @@ expect_out "items 가 없으면 항목 모양을 요구한다" "목록인데 항
 expect_out "items 가 없으면 근거 갈래도 요구한다" "근거 갈래가 안 적힌 계약 필드 1건"
 
 echo
+echo "[31] 생성기가 자란 뒤로 다시 안 뽑은 요청서 (화면이 그대로라 아무도 못 보던 자리)"
+# 요청서는 화면 + 생성기 로직의 함수인데 신선도 검사는 화면(from[].contentHash)만 본다.
+# 실제 사고: 일회성 결과를 싣게 고쳤는데 옛 요청서는 그 열이 빈 채 남았고 점검기는 "세트 점검 통과"라고 답했다.
+GN="$WORK/gen"
+mkdir -p "$GN/screens/user/schemas" "$GN/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$GN/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$GN/interface-requests/user/schemas/"
+cat > "$GN/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$GN" --emit-interface-request --scope user --domain auth \
+  > "$GN/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+# 갓 뽑은 것은 조용하다 (이 시험이 아무 일도 안 하는 경우와 구분되게 먼저 고정)
+node "$CHECK" "$GN" > "$WORK/out.txt" 2>&1
+expect_no_out "갓 뽑은 요청서는 아무 말도 하지 않는다" "생성기가 자란 뒤로"
+grep -qF '"generatedWith"' "$GN/interface-requests/user/interface-request-user-auth.md" \
+  && ok "생성물에 뽑은 판이 찍혀 있다" || bad "생성물에 generatedWith 가 없다 — 판정 근거가 사라진다"
+# 판 표시를 지우면(= 옛 생성기로 뽑힌 것) 다시 뽑으라고 알린다
+python3 - "$GN/interface-requests/user/interface-request-user-auth.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r'\s*"generatedWith": "[^"]*",', '', s)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+node "$CHECK" "$GN" > "$WORK/out.txt" 2>&1
+expect_out "옛 생성기로 뽑힌 요청서를 잡는다" "생성기가 자란 뒤로 다시 안 뽑은 요청서 1건"
+expect_out "다른 검사는 조용하다는 것을 밝힌다" "화면은 그대로라 다른 검사는 아무 말도 하지 않습니다"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
