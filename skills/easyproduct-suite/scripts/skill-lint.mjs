@@ -231,6 +231,29 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   }
 }
 
+// --- (H) gap-fill 절차를 가진 스킬이 **그 문을 여는 말**을 description 에 갖고 있나 -------------
+// 업그레이드 경로(감지·채움·가시화·검증)를 다 만들어 놓고도, **사용자가 "문서 현행화해줘"라고 했을 때
+// 스킬이 발동하지 않으면 그 경로 전체에 닿지 못한다.** 실제로 그런 상태였다 — Step 1 재진입에 트리거를
+// 12가지 넣어 뒀는데 오케스트레이터 description 에 "현행화·업그레이드"가 한 마디도 없었다.
+{
+  const NEED = ['easyproduct-suite', 'easyproduct-backend', 'easyproduct-screen-design',
+                'easyproduct-ia-designer', 'easyproduct-policy-legal', 'easyproduct-data-model'];
+  const WORDS = /현행화|업그레이드|최신 구조|형식 최신|낡은 형식|예전 형식/;
+  for (const name of NEED) {
+    const f = join(SKILLS_DIR, name, 'SKILL.md');
+    let txt;
+    try { txt = readFileSync(f, 'utf8'); } catch { continue; }   // 그 스킬이 없는 배포는 건너뛴다
+    const fm = /^---\n([\s\S]*?)\n---/.exec(txt);
+    if (!fm) { errors.push(`${rel(f)}: frontmatter 를 못 찾음(발동어 점검 불가).`); continue; }
+    if (!WORDS.test(fm[1])) {
+      errors.push(`${rel(f)}: description 에 **업그레이드 발동어**가 없음(현행화·업그레이드·최신 구조 등). `
+        + `gap-fill 절차가 있어도 사용자가 "문서 현행화해줘"라고 할 때 스킬이 발동하지 않아 `
+        + `업그레이드 경로 전체에 닿지 못한다.`);
+    }
+  }
+  if (!errors.some((e) => e.includes('업그레이드 발동어'))) notes.push('업그레이드 발동어 — gap-fill 스킬 6개 전부 보유.');
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);
