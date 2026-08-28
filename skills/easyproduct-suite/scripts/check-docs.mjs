@@ -19,6 +19,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+// 이 점검기·생성기가 속한 **세트 버전**. 생성물(`interface-request`)에 찍혀 나가고, 그 값이 이 값과
+// 다르면 "생성기가 그 뒤 자랐다 — 다시 뽑으세요"를 알린다. 요청서는 화면 + 생성기 로직의 함수인데
+// 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
+// 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
+// **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
+const TOOL_VERSION = '0.12.2';
+
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
   const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
@@ -566,6 +573,7 @@ if (schemaCopyUnchecked.size) {
 report('\n[2] 크로스도큐먼트 참조 (죽은 링크)');
 let refChecked = 0, dead = 0;
 const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다
+const staleGen = [];        // 생성기가 그 뒤 자란 요청서 {path, was}
 const basisNotInReq = [];   // basis(screen-io)가 요청서에 안 실린 동작을 가리킴 {itfId, ref, doc, io}
 const fieldAliases = [];    // 계약 필드가 별칭 키를 씀 {itfId, field, alias, want, doc}
 const listNoItems = [];     // type: list 인데 원소 모양이 없음 {itfId, field, flattened, doc}
@@ -694,6 +702,10 @@ for (const doc of loaded) {
         report(`  ⚠ ${doc.path} 가 낡았다 — 출처 ${f.path} 가 생성 이후 바뀜(요청서를 다시 생성하세요: --emit-interface-request)`);
       }
     }
+    // **생성기가 그 뒤 자랐나.** 요청서는 화면 + 생성기 로직의 함수인데 신선도 검사는 화면만 본다.
+    // 화면이 그대로여도 생성기가 새 칸을 실어 나르게 되면 옛 요청서는 **그 칸이 빈 채로 남는다**
+    // (실제 사고: 일회성 결과를 싣게 고쳤는데 옛 요청서는 빈 열 그대로였고 점검기는 "통과"라고 답했다).
+    if (o.generatedWith !== TOOL_VERSION) staleGen.push({ path: doc.path, was: o.generatedWith || null });
     // 옛 배치(범위 통짜) 감지. 출처가 여럿이면 화면 하나만 고쳐도 **요청서 전체가 낡음**이 되어
     // 어디가 낡았는지 알 수 없다. 도메인별로 갈라야 "이 요청서가 낡았다"가 정확해진다.
     if (Array.isArray(o.from) && (o.from.length > 1 || !o.domain)) oldLayoutReq.push(doc.path);
@@ -819,6 +831,16 @@ if (basisNotInReq.length) {
   show(bucket.untargeted, '**`target`을 먼저 판정하세요** — 미분류라 요청서에 실릴지가 정해지지 않았습니다');
   report('     ※ **화면 자체가 없는 요구**(배치·웹훅·정산·운영)라면 근거 갈래가 다릅니다 —');
   report('        `{"kind": "ops", "ref": "…", "why": "…"}`로 적으세요(`why` 필수).');
+}
+
+// 생성기가 자란 뒤로 다시 안 뽑은 요청서. **화면이 그대로라 신선도 검사가 못 보는 자리**다.
+if (staleGen.length) {
+  report(`\n  ⚠ 생성기가 자란 뒤로 다시 안 뽑은 요청서 ${staleGen.length}건 — 새 칸이 빈 채로 남아 있을 수 있습니다`);
+  for (const x of staleGen.slice(0, CAP(staleGen.length))) {
+    report(`     · ${x.path} (뽑은 판 ${x.was || '표시 없음'} → 지금 ${TOOL_VERSION})`);
+  }
+  if (!verbose && staleGen.length > 5) report(`     · 외 ${staleGen.length - 5}건 (--verbose로 전부)`);
+  report('     → `--emit-interface-request` 로 다시 뽑으세요. 화면은 그대로라 다른 검사는 아무 말도 하지 않습니다.');
 }
 
 // 목록인데 **원소 하나의 모양**이 없나. 고칠 자리가 둘로 갈린다 — 형제를 모으는 일이냐, 새로 적는 일이냐.
@@ -1097,6 +1119,7 @@ if (emitReq) {
   });
   const block = {
     generatedAt: new Date().toISOString().slice(0, 10),
+    generatedWith: TOOL_VERSION,
     scope: reqScope, domain: reqDomain,
     ...(reqTransport ? { preferredTransport: reqTransport, bindingSlots: SLOTS[reqTransport] || [] } : {}),
     from: fromDocs,

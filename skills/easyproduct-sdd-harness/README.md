@@ -46,4 +46,4 @@
 - `assets/` — 정책·핀·리뷰 기록·프로젝트 README 템플릿.
 
 ## 버전
-- easyproduct 세트 `0.12.1`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
+- easyproduct 세트 `0.12.2`의 일부입니다. 버전 규칙은 [VERSIONING.md](../../VERSIONING.md), 변경 내역은 [CHANGELOG.md](../../CHANGELOG.md)를 보세요.
