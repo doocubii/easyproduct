@@ -1253,5 +1253,114 @@ node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
 expect_out "그 화면이 수확되면 다시 판정한다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
 
 echo
+echo "[26] 목록의 항목 모양 · 근거 갈래 · 받는 쪽 일회성"
+IT="$WORK/items"
+mkdir -p "$IT/ssot/backend/schemas" "$IT/screens/user/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$IT/ssot/backend/schemas/"
+cp "$SET/schemas/screen-design.v1.schema.json" "$IT/screens/user/schemas/"
+mkitf() {  # $1 = interfaces 배열 JSON
+cat > "$IT/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+__BODY__
+```
+MD
+  python3 - "$IT/ssot/backend/backend-interface.md" "$1" <<'PY'
+import sys
+p, body = sys.argv[1], sys.argv[2]
+s = open(p, encoding='utf-8').read().replace('__BODY__', body)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+  grep -q '__BODY__' "$IT/ssot/backend/backend-interface.md" && bad "픽스처 치환이 안 먹었다"
+}
+# 파생 출처·일회성 결과 대조에 쓸 데이터 모델(없으면 "실재 변수"가 성립하지 않아 시험이 아무것도 안 한다)
+mkdir -p "$IT/ssot/schemas"
+dmsrc="$(find "$HERE/../.." -name "data-model.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$IT/ssot/schemas/"
+cat > "$IT/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  item: group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "law", "label": "법령", "fields": [
+  { "name": "id", "type": "string", "required": true, "filledBy": "system" } ] }
+```
+MD
+
+base='{"id":"BEITF.user.x.list","summary":"목록","transport":"rest","binding":{"method":"GET","path":"/x"},"auth":{"mode":"session","desc":"로그인"},"request":{"fields":[]},"basis":[{"kind":"ops","ref":"운영 요구","why":"배치"}],'
+
+# (가) 목록인데 items 없음 + 근거 갈래 없음
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "목록인데 항목 모양이 없으면 잡는다" "목록인데 항목 모양이 없는 계약 필드 1건"
+expect_out "원소 모양을 적으라고 안내한다" "원소 모양을 적으세요"
+expect_out "근거 갈래 미기재도 잡는다" "근거 갈래가 안 적힌 계약 필드 1건"
+expect_out "반대편(파생인데 dataModel)은 기계가 못 잡는다고 밝힌다" "반대편이 더 위험합니다"
+
+# (나) 펼쳐 적은 것은 **고칠 자리가 다르다** — 형제를 모으는 일이다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\"},{\"name\":\"laws[].id\",\"type\":\"string\",\"desc\":\"법령 ID\",\"dataModel\":\"law.id\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "펼쳐 적었으면 형제를 모으라고 안내한다" "형제 필드를 모으세요"
+expect_no_out "이때는 원소 모양을 새로 적으라고 하지 않는다" "원소 모양을 적으세요"
+
+# (다) items·근거를 갖추면 조용하다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\",\"transient\":true,\"items\":{\"type\":\"object\",\"desc\":\"법령 하나\",\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"법령 ID\"}]}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "항목 모양과 근거를 갖추면 아무 말도 하지 않는다" "목록인데 항목 모양이 없는"
+expect_no_out "근거 갈래도 조용하다" "근거 갈래가 안 적힌"
+
+# (라) 근거 갈래를 둘 적으면 오류 · 파생 출처는 등기부 대조를 받는다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"masked\",\"type\":\"string\",\"desc\":\"끝 네 자리\",\"dataModel\":\"law.id\",\"derivedFrom\":{\"from\":[\"law.id\"],\"how\":\"끝 네 자리만 남긴다\"}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "근거 갈래를 둘 적으면 오류다" "근거 갈래가 둘"
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"masked\",\"type\":\"string\",\"desc\":\"끝 네 자리\",\"derivedFrom\":{\"from\":[\"nosuch.field\"],\"how\":\"끝 네 자리만 남긴다\"}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "파생 출처가 데이터 모델에 없으면 죽은 링크다" "파생된 출처 nosuch.field"
+
+# (마) 받는 쪽 일회성 — 실재 변수를 적으면 receives 우회다
+cat > "$IT/screens/user/screen-design-user-x.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.x.list", "feat": "FEAT.x.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.x.list.load", "action": "목록 조회", "target": "server",
+      "auth": { "required": true }, "sends": [], "receives": [],
+      "transientReceives": [ { "name": "totalCount", "desc": "전체 건수" } ] } ] } } ] }
+```
+MD
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "일회성 결과값은 등기부 대조를 받지 않는다" "일회성 결과 totalCount"
+sed -i 's/"name": "totalCount", "desc": "전체 건수"/"name": "law.id", "desc": "전체 건수"/' "$IT/screens/user/screen-design-user-x.md"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "실재 변수를 일회성 결과에 적으면 receives 로 옮기라고 한다" "일회성 결과 law.id"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))
