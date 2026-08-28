@@ -1362,5 +1362,122 @@ node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
 expect_out "실재 변수를 일회성 결과에 적으면 receives 로 옮기라고 한다" "일회성 결과 law.id"
 
 echo
+echo "[27] 항목 단위 개정 — 스크립트가 계산하고 사람은 올리기만"
+RV="$WORK/rev"
+mkdir -p "$RV/ssot/backend/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$RV/ssot/backend/schemas/"
+mkrev() {  # $1 = path 값, $2 = 추가 키(예: ,"revision":5)
+cat > "$RV/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{"interfaces":[{"id":"BEITF.user.x.get"__EXTRA__,"summary":"조회","transport":"rest","binding":{"method":"GET","path":"__PATH__"},"auth":{"mode":"session","desc":"로그인"},"request":{"fields":[]},"response":{"fields":[]},"basis":[{"kind":"ops","ref":"운영","why":"배치"}]}]}
+```
+MD
+  python3 - "$RV/ssot/backend/backend-interface.md" "$1" "$2" <<'PY'
+import sys
+p, pth, extra = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(p, encoding='utf-8').read().replace('__PATH__', pth).replace('__EXTRA__', extra)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+  grep -q '__PATH__\|__EXTRA__' "$RV/ssot/backend/backend-interface.md" && bad "픽스처 치환이 안 먹었다"
+}
+
+# (가) 기록이 없으면 알린다 — 조용히 통과하지 않는다
+mkrev "/x" ""
+rm -f "$RV/interface-revisions.json"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "개정 기록이 없으면 알린다" "항목 단위 개정 기록이 없습니다"
+expect_out "과거 이력을 지어내지 않는다고 밝힌다" "지어내지 않습니다"
+
+# (나) sync 하면 전부 1로 시작한다
+node "$CHECK" "$RV" --sync-revisions > "$WORK/out.txt" 2>&1
+expect_out "sync 하면 기록한다" "인터페이스 1건 (새로 1"
+[ -f "$RV/interface-revisions.json" ] || bad "interface-revisions.json 이 안 만들어졌다"
+grep -q '"revision": 1' "$RV/interface-revisions.json" || bad "개정 1로 시작하지 않았다"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "바뀐 것이 없으면 일치라고 한다" "항목 단위 개정 1건 — 기록과 일치"
+
+# (다) 계약이 바뀌면 오른다
+mkrev "/x-v2" ""
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "계약이 바뀌면 개정이 오른다" "개정 1 → 2"
+expect_out "어긋남을 집계한다" "기록되지 않은 변경 1건"
+node "$CHECK" "$RV" --check-revisions > /dev/null 2>&1
+[ $? -eq 1 ] || bad "--check-revisions 가 어긋남에 1을 안 냈다"
+
+# (라) **근거만 바뀌면 오르지 않는다** — 계약이 바뀐 게 아니다
+node "$CHECK" "$RV" --sync-revisions > /dev/null 2>&1
+sed -i 's|"why":"배치"|"why":"배치 — 사유를 더 적었다"|' "$RV/ssot/backend/backend-interface.md"
+grep -q "사유를 더 적었다" "$RV/ssot/backend/backend-interface.md" || bad "픽스처 편집이 안 먹었다"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "근거만 바뀌면 개정이 오르지 않는다" "기록과 일치"
+
+# (마) 사람은 **더 올릴 수만** 있다
+mkrev "/x-v2" ',"revision":7'
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "사람이 올린 것을 존중한다" "사람이 올린 것 1건"
+mkrev "/x-v2" ',"revision":1'
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "계산값보다 작게 적으면 오류다" "보다 작습니다 — 개정은 내려가지 않습니다"
+
+echo
+echo "[28] 재생성이 손으로 적은 것을 지울 때 — 조용히 지우지 않는다"
+# 요청서는 파생물이라 통째로 다시 만들어지고, 계약 문서는 손질하는 곳이라 성질이 반대다.
+# 같은 규약으로 덮으면 요청서 쪽에서만 조용히 샌다(실사용 제보: 스키마에 없는 키를 손으로 넣었는데
+# 다음 생성 때 사라졌다). 지우기 전에 무엇이 지워지는지 알려야 한다.
+RG="$WORK/regen"
+mkdir -p "$RG/screens/user/schemas" "$RG/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$RG/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$RG/interface-requests/user/schemas/"
+cat > "$RG/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth \
+  > "$RG/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+grep -q "IO.auth.login.submit" "$RG/interface-requests/user/interface-request-user-auth.md" || bad "요청서 생성이 안 됐다"
+
+# 아직 손댄 것이 없으면 조용하다 (이 시험이 아무 일도 안 하는 경우와 구분되게 반대편을 먼저 고정한다)
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth > /dev/null 2>"$WORK/out.txt"
+expect_no_out "손댄 것이 없으면 아무 말도 하지 않는다" "재생성이 지웁니다"
+
+# 스키마에 없는 키를 손으로 넣으면 — 지워질 것을 알린다
+python3 - "$RG/interface-requests/user/interface-request-user-auth.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r'(\{\s*\n\s*"ref":)', r'{\n      "items": "손으로 적은 원소 모양",\n      "ref":', s, count=1)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth > /dev/null 2>"$WORK/out.txt"
+expect_out "손으로 넣은 키가 지워질 것을 알린다" "재생성이 지웁니다"
+expect_out "어느 키인지 짚는다" "IO.auth.login.submit 의 items"
+expect_out "원본에 적으라고 안내한다" "원본(화면 설계서)에 적고"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

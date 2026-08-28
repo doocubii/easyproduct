@@ -121,6 +121,9 @@ doc-builder가 정식으로 가진 모드를 고르는 것이다). 초안 모드
     - **화면 설계서의 `io[].target`이 없으면** `easyproduct-screen-design`의 **버전업(gap-fill)**으로 채운다
       (server/local/client 판정 + `id` 부여 + 폐기된 `op` 이관). 없으면 백엔드 설계가 **로컬 저장까지
       서버 인터페이스로 잘못 도출**한다.
+    - **항목 단위 개정 기록(`interface-revisions.json`)이 없으면** `check-docs.mjs --sync-revisions`를
+      한 번 돌린다. 전 인터페이스가 **개정 1**로 시작한다(과거 이력은 지어내지 않는다).
+      없으면 소비자가 **"내가 맞춘 판이 아직 유효한가"**를 물을 자리가 없다.
     - **계약 필드가 목록(`list`)인데 `items`가 없으면**(점검기가 갈래를 갈라 집계) `easyproduct-backend`의
       **버전업(gap-fill)**으로 원소 모양을 채운다. `이름[].속성` 형제가 있으면 `items.fields`로 모은다.
     - **계약 필드에 근거 갈래(`dataModel`·`derivedFrom`·`transient`)가 없으면** 같은 버전업으로 가른다.
@@ -691,7 +694,7 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.11.3`
+- **버전**: `0.12.0`
 - **릴리즈 날짜**: 2026-08-28
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0
