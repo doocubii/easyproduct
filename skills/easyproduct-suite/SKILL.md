@@ -121,6 +121,12 @@ doc-builder가 정식으로 가진 모드를 고르는 것이다). 초안 모드
     - **화면 설계서의 `io[].target`이 없으면** `easyproduct-screen-design`의 **버전업(gap-fill)**으로 채운다
       (server/local/client 판정 + `id` 부여 + 폐기된 `op` 이관). 없으면 백엔드 설계가 **로컬 저장까지
       서버 인터페이스로 잘못 도출**한다.
+    - **계약 필드가 목록(`list`)인데 `items`가 없으면**(점검기가 갈래를 갈라 집계) `easyproduct-backend`의
+      **버전업(gap-fill)**으로 원소 모양을 채운다. `이름[].속성` 형제가 있으면 `items.fields`로 모은다.
+    - **계약 필드에 근거 갈래(`dataModel`·`derivedFrom`·`transient`)가 없으면** 같은 버전업으로 가른다.
+      산문에 근거가 없으면 **비워 두고 집계에 남긴다**(지어내지 않는다).
+    - **화면 동작이 저장 안 하는 결과값을 산문에만 두고 있으면** `easyproduct-screen-design`의 버전업으로
+      **`transientReceives`**에 옮긴다. 산문에만 있으면 요청서에 안 나가 백엔드가 그 요구를 모른다.
     - **계약 필드가 `enum`·`optional`로 적혀 있으면**(점검기가 "이관 필요"로 집계) `easyproduct-backend`의
       **버전업(gap-fill)**으로 표준 이름(`values`·`required`)으로 바꾼다. 값은 그대로 옮기고 뜻은 안 바꾼다.
     - **근거(`basis`)가 요청서에 없는 화면 동작을 가리키면**(점검기가 갈래를 갈라 집계) **점검기가 지목한 자리**로
@@ -685,7 +691,7 @@ Stage 3.7에서 사용자가 "spec-kit으로 넘길 안내문을 만들까요?"�
 
 이 스킬은 **easyproduct 스킬 세트**의 일부다. 사용자가 이 스킬의 **버전·릴리즈 날짜·배포처·라이선스**를 물으면 아래 정보로 답한다(묻지 않으면 먼저 꺼내지 않는다).
 
-- **버전**: `0.11.2`
+- **버전**: `0.11.3`
 - **릴리즈 날짜**: 2026-08-28
 - **배포처(저장소)**: https://github.com/doocubii/easyproduct
 - **라이선스**: Apache License 2.0

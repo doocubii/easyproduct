@@ -184,7 +184,30 @@
           "items": {
             "type": "string"
           },
-          "description": "받는 데이터 변수. 데이터 모델 실재 변수만; 없으면 `[]`."
+          "description": "동작 후 받는 데이터 변수(`<group>[.<field>]`). 데이터 모델 실재 변수만 — 없으면 `[]`. **저장하지 않는 결과값**(총 건수·다음 페이지 커서·처리 메시지)은 여기 넣지 말고 **`transientReceives`**에 담는다 — 예전엔 그런 값을 '산문에만 둔다'고 했는데, 그러면 요청서에 안 나가고 **백엔드는 그 요구가 없는 줄 안다.** 내비게이션(어느 화면으로 간다)은 데이터가 아니므로 여전히 산문 몫이다."
+        },
+        "transientReceives": {
+          "type": "array",
+          "minItems": 1,
+          "description": "받지만 **저장하지 않는 일회성 결과값**(총 건수·다음 페이지 커서·처리 결과 메시지·발급된 일회용 링크 등). 데이터 모델에 등재할 값이 아니라 `receives`에 못 넣던 것들인데, **자리가 없어 산문에만 남으면 요청서에 안 나가고 백엔드는 그 요구가 없는 줄 안다**(보내는 쪽 `transientSends`와 대칭). 등기부 대조를 받지 않으므로 뜻을 함께 담는다. 없으면 이 필드를 아예 두지 않는다.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "desc"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "결과값 이름."
+              },
+              "desc": {
+                "type": "string",
+                "description": "이 값이 무엇인지 한 줄. **필수**."
+              }
+            }
+          }
         },
         "policies": {
           "type": "array",

@@ -535,6 +535,8 @@ let refChecked = 0, dead = 0;
 const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다
 const basisNotInReq = [];   // basis(screen-io)가 요청서에 안 실린 동작을 가리킴 {itfId, ref, doc, io}
 const fieldAliases = [];    // 계약 필드가 별칭 키를 씀 {itfId, field, alias, want, doc}
+const listNoItems = [];     // type: list 인데 원소 모양이 없음 {itfId, field, flattened, doc}
+const noOrigin = [];        // 필드의 근거 갈래 미기재 {itfId, field, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
@@ -564,6 +566,11 @@ for (const doc of loaded) {
       for (const a of (fdat.io || [])) for (const t of (a.transientSends || [])) {
         if (t && t.name && dataRefOk(t.name)) {
           report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+        }
+      }
+      for (const a of (fdat.io || [])) for (const t of (a.transientReceives || [])) {
+        if (dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 일회성 결과 ${t.name} 은 데이터 모델 실재 변수다 — \`receives\`로 옮기세요`);
           dead++;
         }
       }
@@ -591,6 +598,11 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) for (const t of (a.transientSends || [])) {
         if (t && t.name && dataRefOk(t.name)) {
           report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+        }
+      }
+      for (const a of (dat.io || [])) for (const t of (a.transientReceives || [])) {
+        if (dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 결과 ${t.name} 은 데이터 모델 실재 변수다 — \`receives\`로 옮기세요`);
           dead++;
         }
       }
@@ -679,9 +691,39 @@ for (const doc of loaded) {
       // 같은 뜻의 별칭 키를 집계한다(표준: 허용값 `values` · 필수 여부 `required`).
       const ALIAS = { enum: 'values', optional: 'required' };
       for (const side of ['request', 'response']) {
-        for (const fl of ((i[side] || {}).fields || [])) {
+        const fields = (i[side] || {}).fields || [];
+        // 이름이 `x[].y`·`x.y` 꼴이면 `x`를 **펼쳐 적은 것**이다. 그런 형제가 있으면 고칠 자리가 다르다
+        // (원소 모양을 지어내는 것이 아니라 **형제를 `items.fields`로 모으는** 일이다).
+        const flatParents = new Set();
+        for (const fl of fields) {
+          const m = /^([^.[\]]+)(?:\[\])?\./.exec(String(fl.name || ''));
+          if (m) flatParents.add(m[1]);
+        }
+        for (const fl of fields) {
           for (const [alias, want] of Object.entries(ALIAS)) {
             if (alias in fl) fieldAliases.push({ itfId: i.id, field: `${side}.${fl.name}`, alias, want, doc: doc.path });
+          }
+          const bare = String(fl.name || '').replace(/\[\]$/, '');
+          // **목록인데 원소 모양이 없다.** `type: "list"`에서 멈추면 받는 쪽은 원소가 무엇인지 모른다
+          // (실측: 객체 배열을 보냈는데 서버는 문자열 배열을 기다려 422 — 하루 소요).
+          if (fl.type === 'list' && !fl.items) {
+            listNoItems.push({ itfId: i.id, field: `${side}.${fl.name}`, flattened: flatParents.has(bare), doc: doc.path });
+          }
+          // **이 값이 어디서 오는지**가 셋 중 하나로 적혀 있나(저장 · 파생 · 일회성).
+          const origins = ['dataModel', 'derivedFrom', 'transient'].filter((k) => fl[k] != null && fl[k] !== false);
+          if (origins.length > 1) {
+            report(`  ❌ ${doc.path}: ${i.id} 의 ${side}.${fl.name} 에 근거 갈래가 둘(${origins.join(' + ')}) — 하나만 적습니다`);
+            dead++;
+          } else if (origins.length === 0 && !flatParents.has(bare)) {
+            noOrigin.push({ itfId: i.id, field: `${side}.${fl.name}`, doc: doc.path });
+          }
+          // 파생은 **무엇으로부터 왔는지**가 등기부에 실재해야 한다.
+          for (const src of ((fl.derivedFrom || {}).from || [])) {
+            refChecked++;
+            if (!dataRefOk(src)) {
+              report(`  ❌ ${doc.path}: ${i.id} 의 ${side}.${fl.name} 이 파생된 출처 ${src} → 데이터 모델에 없음`);
+              dead++;
+            }
           }
         }
       }
@@ -741,6 +783,37 @@ if (basisNotInReq.length) {
   show(bucket.untargeted, '**`target`을 먼저 판정하세요** — 미분류라 요청서에 실릴지가 정해지지 않았습니다');
   report('     ※ **화면 자체가 없는 요구**(배치·웹훅·정산·운영)라면 근거 갈래가 다릅니다 —');
   report('        `{"kind": "ops", "ref": "…", "why": "…"}`로 적으세요(`why` 필수).');
+}
+
+// 목록인데 **원소 하나의 모양**이 없나. 고칠 자리가 둘로 갈린다 — 형제를 모으는 일이냐, 새로 적는 일이냐.
+if (listNoItems.length) {
+  const flat = listNoItems.filter((x) => x.flattened);
+  const bare = listNoItems.filter((x) => !x.flattened);
+  report(`\n  ⚠ 목록인데 항목 모양이 없는 계약 필드 ${listNoItems.length}건`);
+  report('     받는 쪽은 `type: "list"`만 보고 원소가 무엇인지 알 수 없습니다 —');
+  report('     실측 사고: 객체 배열을 보냈는데 서버는 문자열 배열을 기다려 422가 났습니다.');
+  const show = (list, head, how) => {
+    if (!list.length) return;
+    report(`     ${head} (${list.length}건)`);
+    for (const x of list.slice(0, CAP(list.length))) report(`       · ${x.itfId} 의 ${x.field}`);
+    if (!verbose && list.length > 5) report(`       · 외 ${list.length - 5}건 (--verbose로 전부)`);
+    report(`       ${how}`);
+  };
+  show(flat, '**형제 필드를 모으세요** — 원소의 필드를 `이름[].속성`으로 펼쳐 적으셨습니다',
+    '→ 형제 배열이라 스키마가 못 봅니다. `items.fields`로 모으면 원소 모양이 한자리에 섭니다.');
+  show(bare, '**원소 모양을 적으세요** — 어디에도 원소 정보가 없습니다',
+    '→ `items: { "type": "…", "desc": "…" }`. 원소가 객체면 `fields`, 열거형이면 `values`를 함께.');
+}
+
+// 값이 **어디서 오는지**가 안 적힌 필드. 저장·파생·일회성 셋 중 하나여야 한다.
+if (noOrigin.length) {
+  report(`\n  ⚠ 근거 갈래가 안 적힌 계약 필드 ${noOrigin.length}건 — 저장된 값인지, 파생인지, 일회성인지 모릅니다`);
+  for (const x of noOrigin.slice(0, CAP(noOrigin.length))) report(`     · ${x.itfId} 의 ${x.field}`);
+  if (!verbose && noOrigin.length > 5) report(`     · 외 ${noOrigin.length - 5}건 (--verbose로 전부)`);
+  report('     → 저장된 값이면 `dataModel` · 계산·가공해 만들면 `derivedFrom` · 저장 안 하면 `transient: true`.');
+  report('     ※ **반대편이 더 위험합니다** — `dataModel`이 붙었는데 사실은 **파생**인 것은 기계가 못 잡습니다');
+  report('        (이름이 실재하니 통과). 끝 네 자리 발췌·건수·결합 같은 값이 원본 개념에 걸려 있으면,');
+  report('        저장 설계를 읽는 쪽이 **원본을 저장한다고 오해합니다.** 풀 리뷰의 미러 충실도에서 봅니다.');
 }
 
 // 계약 필드가 **같은 뜻을 다른 이름으로** 적고 있나. 스키마가 한쪽만 선언해 두어 나머지가 조용히 통과했다
@@ -843,6 +916,7 @@ if (emitNeeds) {
       id: x.id, screen: x.screen, action: x.action, target: x.target,
       ui: x.ui ?? null, auth: x.auth ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
+      ...(x.transientReceives && x.transientReceives.length ? { transientReceives: x.transientReceives } : {}),
       policies: x.policies ?? [], semantics: x.semantics ?? null,
       ...(x.frame ? { frame: x.frame, appliesTo: x.appliesTo ?? null } : {}),
       doc: x.doc, coveredBy: covered.get(x.id) ?? [],
@@ -923,6 +997,7 @@ if (emitReq) {
       sends: x.sends || [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
       receives: x.receives || [],
+      ...(x.transientReceives && x.transientReceives.length ? { transientReceives: x.transientReceives } : {}),
       ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
       ...(x.semantics ? { semantics: x.semantics } : {}),
       // 프레임 동작은 **한 화면이 아니라 걸리는 모든 화면에서** 일어난다. 이 표시가 없으면 백엔드가
@@ -954,14 +1029,14 @@ if (emitReq) {
          '> 화면 수만큼 불린다고 보고 호출 빈도·캐시·세션 저장소를 정하세요. `appliesTo`에 예외 화면이 있으면',
          '> 그 화면에서는 일어나지 않습니다(대개 로그인 화면 — 안 빼면 "로그인하려면 세션이 있어야 한다"가 됩니다).', '']
       : []),
-    '| 동작 | 화면/프레임 | 인증 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|---|',
+    '| 동작 | 화면/프레임 | 인증 | 보냄 | 일회성 입력 | 받음 | 일회성 결과 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|---|---|',
     ...block.requests.map((r) => {
       // 인증 요건은 **백엔드가 계약(auth.mode·checks)을 정하는 근거**다. 미분류를 빈칸으로 두면
       // "인증 불필요"로 읽히므로 **미분류라고 적는다**.
       const au = !r.auth ? '**미분류**'
         : (r.auth.required ? `필요${(r.auth.roles || []).length ? ` (${r.auth.roles.join('·')})` : ''}` : '불필요')
           + (r.auth.note ? ` — ${r.auth.note}` : '');
-      return `| \`${r.ref}\` | ${r.screen} | ${au} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`;
+      return `| \`${r.ref}\` | ${r.screen} | ${au} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.transientReceives || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`;
     }),
     '',
     ...(() => {
