@@ -46,12 +46,16 @@ if (-not (Test-Path -LiteralPath $SrcDir)) {
   exit 1
 }
 
-# SKILL.md 메타 블록의 버전(백틱으로 감싼 X.Y.Z)을 읽는다(하드코딩 없음, 파일당 하나뿐).
+# SKILL.md 메타 블록의 버전을 읽는다 — **줄 끝에 홀로 놓인** 백틱 버전만 본다.
 # 한글에 의존하지 않는 ASCII 패턴이라 인코딩과 무관하게 동작한다.
+#
+# **"파일에서 첫 X.Y.Z"로 하지 않는다** — 본문이 다른 버전을 인용하면 그게 먼저 잡혀,
+# **최신을 깔면서 옛 버전이라고 보고**한다(실제로 0.12.8을 깔며 0.11.0이라 했다).
+# 메타 줄은 줄 끝에서 닫히고 산문 인용은 뒤에 글자가 붙으므로, 그 차이로 가른다.
 function Read-SkillVersion([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { return $null }
   $raw = Get-Content -LiteralPath $Path -Raw
-  $m = [regex]::Match($raw, '`([0-9]+\.[0-9]+\.[0-9]+)`')
+  $m = [regex]::Match($raw, '`([0-9]+\.[0-9]+\.[0-9]+)`[ \t]*\r?$', 'Multiline')
   if ($m.Success) { return $m.Groups[1].Value }
   return $null
 }
