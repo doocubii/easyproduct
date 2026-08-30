@@ -254,6 +254,29 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   if (!errors.some((e) => e.includes('업그레이드 발동어'))) notes.push('업그레이드 발동어 — gap-fill 스킬 6개 전부 보유.');
 }
 
+// --- (I) 설치 스크립트가 읽는 버전이 **실제 버전과 같은가** ---------------------
+// 설치기는 SKILL.md 에서 버전을 뽑아 보고한다. 그 규칙이 본문 인용까지 잡으면 **최신을 깔면서
+// 옛 버전이라고 보고**한다 — 파일은 맞는데 표시만 틀리니, 사용자는 "설치가 안 됐다"고 읽고
+// 원인을 엉뚱한 데서 찾는다(실제 사고: `0.12.8` 을 깔며 `0.11.0` 이라고 했다. 본문에 벤더 사본이
+// `0.11.0` 에 멈췄다는 설명문이 있었고, 그게 먼저 잡혔다).
+// **여기서 같은 규칙으로 읽어 메타 줄의 값과 대조한다.**
+{
+  const suiteSkill = join(SUITE_DIR, 'SKILL.md');
+  try {
+    const txt = readFileSync(suiteSkill, 'utf8');
+    const meta = /^- \*\*버전\*\*: `([^`]+)`$/m.exec(txt);
+    // 설치기 규칙: **줄 끝에 홀로 놓인** 백틱 버전의 첫 매치
+    const asInstaller = /`([0-9]+\.[0-9]+\.[0-9]+)`[ \t]*$/m.exec(txt);
+    if (!meta) errors.push(`${rel(suiteSkill)}: 메타 정보의 버전 줄을 못 찾음.`);
+    else if (!asInstaller) errors.push(`${rel(suiteSkill)}: 설치 스크립트 규칙으로 버전을 못 읽음 — 설치기가 "알 수 없음"을 보고한다.`);
+    else if (asInstaller[1] !== meta[1]) {
+      errors.push(`설치 스크립트가 읽을 버전(${asInstaller[1]})이 메타 버전(${meta[1]})과 다름 — `
+        + `본문의 버전 인용이 먼저 잡혔다. 최신을 깔면서 옛 버전이라고 보고하게 된다. `
+        + `인용은 줄 끝에 홀로 두지 말고 뒤에 글자를 붙여라(예: \`0.11.0\`에).`);
+    } else notes.push(`설치 스크립트가 읽을 버전 ${asInstaller[1]} — 메타와 일치.`);
+  } catch (e) { errors.push(`설치 버전 대조 실패: ${e.message}`); }
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);

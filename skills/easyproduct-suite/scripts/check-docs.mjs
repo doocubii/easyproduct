@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 // 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
 // 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
 // **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
-const TOOL_VERSION = '0.12.8';
+const TOOL_VERSION = '0.12.9';
 
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
