@@ -527,16 +527,24 @@ function buildRegistry() {
 
 // ─────────────────────────────── ⑤ 근거 ───────────────────────────────
 
-// 참조 패턴. 두 개의 가드가 **필수**다(둘 다 실전 오탐에서 나왔다):
-//   (?![A-Za-z0-9_-])  토큰 경계 — 없으면 `FEAT.billing.*`에서 백트래킹으로 `FEAT.billin`이 매칭된다.
-//   (?!\.\*)           와일드카드 — `FEAT.billing.*` 같은 계열 표기를 **참조로 치지 않는다**.
-// 세그먼트 문자 클래스에 `.`을 넣지 않는 것도 같은 이유다(넣으면 `FEAT.billing.`을 삼키고,
-// 후행점을 잘라 **존재하지 않는 `FEAT.billing`**을 만들어낸다 — 옛 구현의 실제 결함).
+// 참조 패턴. 토큰 경계 가드 `(?![A-Za-z0-9_-])`가 **필수**다 — 없으면 `FEAT.billing.*`에서
+// 백트래킹으로 `FEAT.billin`이 매칭된다. 세그먼트 문자 클래스에 `.`을 넣지 않는 것도 같은 이유다
+// (넣으면 `FEAT.billing.`을 삼키고, 후행점을 잘라 **존재하지 않는 `FEAT.billing`**을 만든다).
+//
+// **와일드카드 가드는 패턴 안에 두지 않는다(중요).** 예전엔 `(?!\.\*)`를 붙였는데, **마디가 넷 이상이면
+// 되짚기로 뚫린다** — `BEITF.user.law.*`에서 가드가 실패하면 한 마디 물러나 `BEITF.user`로 다시 맞고,
+// 그 자리는 뒤에 `.law`가 오므로 **두 가드를 모두 통과한다.** 그래서 **아무도 적은 적 없는 이름**이
+// 죽은 링크로 떴다(`죽은 링크: BEITF.user`). 마디 셋(`POL.a.b.*`)은 안 뚫려서, 정책 계열은 멀쩡한데
+// 계약·화면 계열만 유령이 뜨는 비대칭까지 있었다 — 한쪽만 보면 "우리 문서가 이상한가"로 읽힌다.
+// **매치한 뒤 뒤따르는 두 글자를 보고 버린다**(아래 `isSeriesRef`). 되짚기가 닿지 않는 자리다.
+// 매치 **뒤**에서 계열 표기(`…*`)를 가른다. 패턴 안의 전방탐색은 되짚기로 뚫리지만 여기는 안 뚫린다.
+function isSeriesRef(text, end) { return text.slice(end, end + 2) === '.*'; }
+
 function refPattern() {
   if (P.specRefs.refPattern) return new RegExp(P.specRefs.refPattern, 'g');
   const prefixes = P.upstream.anchorRegistry?.idPrefixes ?? [];
   if (prefixes.length) {
-    return new RegExp(`\\b(?:${prefixes.map(escapeRe).join('|')})(?:\\.[A-Za-z0-9_-]+)+(?![A-Za-z0-9_-])(?!\\.\\*)`, 'g');
+    return new RegExp(`\\b(?:${prefixes.map(escapeRe).join('|')})(?:\\.[A-Za-z0-9_-]+)+(?![A-Za-z0-9_-])`, 'g');
   }
   if (P.upstream.anchorRegistry?.genericIdPattern) return new RegExp(P.upstream.anchorRegistry.genericIdPattern, 'g');
   return null;
@@ -620,6 +628,7 @@ if (opts.mode === 'changed') {
         const text = readText(path);
         if (wp) wildcardSkipped += [...text.matchAll(wp)].length;
         for (const m of text.matchAll(rp)) {
+          if (isSeriesRef(text, m.index + m[0].length)) continue;   // 계열 표기 — 참조가 아니다
           const ref = m[0];
           if (!registry.has(ref)) {
             violate('specRefs', slug, `죽은 링크: ${ref} (상위 문서 등기부에 없음) — ${file}`,
