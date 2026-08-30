@@ -1,4 +1,4 @@
-ai_work/
-.claude/settings.json
 
-.vscode/
+.claude/settings.json
+.vscode/__pycache__/
+ai_work/

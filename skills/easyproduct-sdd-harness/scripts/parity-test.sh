@@ -98,6 +98,7 @@ MD
 
 - **FR-001**: FEAT.auth.login 화면의 정의대로 이메일 로그인을 제공해야 한다.
 - **FR-002**: FEAT.billing.* 계열 화면은 로그인 후에만 노출해야 한다.
+- **FR-004**: FEAT.billing.invoice.* 계열 화면은 본인 것만 보여준다. UI.form.field.* 도 같다.
 - **FR-003**: 비밀번호는 8자 이상이어야 한다.
 
 ### Key Entities
@@ -203,6 +204,14 @@ run_regressions() {
     "any('FEAT.ghost.social' in x['message'] for x in v)" -- --full
   expect "A 건너뛴 와일드카드를 리포트에 드러낸다" \
     "any('와일드카드' in s for s in d['skipped'])" -- --full
+  # A-2: **마디가 넷 이상인 계열 표기**(BEITF.user.law.*)도 유령을 만들지 않는다.
+  #      기존 A는 `FEAT.billing.*`(마디 하나)만 봤는데 **그건 원래 안 뚫리는 모양**이었다 —
+  #      패턴 안의 `(?!\.\*)`는 마디가 넷 이상일 때 되짚기로 뚫려 `FEAT.billing`처럼
+  #      **아무도 적은 적 없는 이름**을 죽은 링크로 냈다(실사용 제보: 그 한 줄을 찾는 데 시간을 썼다).
+  expect "A-2 깊은 계열(FEAT.billing.invoice.*) → 유령 없음" \
+    "[x for x in v if '죽은 링크' in x['message'] and 'FEAT.billing' in x['message']]==[]" -- --full
+  expect "A-2 깊은 계열(UI.form.field.*) → 유령 없음" \
+    "[x for x in v if '죽은 링크' in x['message'] and 'UI.form' in x['message']]==[]" -- --full
   # B: 요구 단위는 FR-/SC- — 템플릿 헤딩(Edge Cases·Key Entities·User Story)은 요구가 아니다.
   expect "B 템플릿 헤딩을 요구로 오판하지 않음" \
     "[x for x in v if '근거 없는 요구' in x['message'] and ('Edge Cases' in x['message'] or 'Key Entities' in x['message'] or 'User Story' in x['message'])]==[]" -- --full

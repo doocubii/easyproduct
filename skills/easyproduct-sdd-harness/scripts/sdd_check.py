@@ -733,6 +733,17 @@ def build_registry():
 
 # ─────────────────────────────── ⑤ 근거 ───────────────────────────────
 
+def is_series_ref(text, end):
+    r"""매치 **뒤**에서 계열 표기(`…*`)를 가른다.
+
+    와일드카드 가드를 패턴 안에 `(?!\.\*)`로 두면 **마디가 넷 이상일 때 되짚기로 뚫린다** —
+    `BEITF.user.law.*`에서 가드가 실패하면 한 마디 물러나 `BEITF.user`로 다시 맞고, 그 자리는
+    뒤에 `.law`가 오므로 두 가드를 모두 통과한다. 그래서 **아무도 적은 적 없는 이름**이 죽은
+    링크로 떴다. 여기는 되짚기가 닿지 않는다.
+    """
+    return text[end:end + 2] == '.*'
+
+
 def ref_pattern():
     """참조 패턴. 두 개의 가드가 **필수**다(둘 다 실전 오탐에서 나왔다):
       (?![A-Za-z0-9_-])  토큰 경계 — 없으면 `FEAT.billing.*`에서 백트래킹으로 `FEAT.billin`이 매칭된다.
@@ -745,7 +756,7 @@ def ref_pattern():
     prefixes = ar.get('idPrefixes') or []
     if prefixes:
         return re.compile(r'\b(?:' + '|'.join(re.escape(p) for p in prefixes)
-                          + r')(?:\.[A-Za-z0-9_-]+)+(?![A-Za-z0-9_-])(?!\.\*)')
+                          + r')(?:\.[A-Za-z0-9_-]+)+(?![A-Za-z0-9_-])')
     if ar.get('genericIdPattern'):
         return re.compile(ar['genericIdPattern'])
     return None
@@ -823,6 +834,8 @@ else:
                 if wp:
                     wildcard_skipped += len(wp.findall(text))
                 for m in rp.finditer(text):
+                    if is_series_ref(text, m.end()):    # 계열 표기 — 참조가 아니다
+                        continue
                     ref = m.group(0)
                     if ref not in registry:
                         violate('specRefs', slug, f'죽은 링크: {ref} (상위 문서 등기부에 없음) — {fname}',
