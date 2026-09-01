@@ -286,6 +286,42 @@ for slug in slugsWithChangedFiles(policy.reviewRecord.requireOnChangeOf):   // s
       if missing(rec, field): VIOLATION("reviewRecord", slug, "기록에 " + field + " 없음")
 ```
 
+## 5-1. 접을 후보 가시화 (위반 아님 · 정보 등급)
+
+**이 절을 빠뜨리면 그 구현만 조용히 이 정보를 안 낸다.** 규칙 일곱이 전부 **변화**에 반응하고
+**은퇴**를 말하는 자리가 없으면 슬라이스 집합은 단조증가한다(실사용: 다섯 달에 78개, 절반 이상이
+제품 기능이 아니었다). 접기는 구조적으로 막힌 적이 없고 **접어도 된다는 말과 순서가 없었을 뿐**이라,
+검사기가 후보를 세어 준다.
+
+```
+if mode == "full" and scopedSlugs:
+
+    # ① 구속력 있는 태그가 없는 슬라이스
+    #    **allowlist 안의 태그는 세지 않는다** — ③이 isGoverned를 먼저 보므로 검사기가 안 본다(장식).
+    #    이걸 모르면 시험·하네스의 태그까지 세어 후보를 놓친다(실사용자가 그래서 처음에 일곱 개만 줄였다).
+    binding = { tag.slug for f in GOVERNED if (tag := readTag(f)) and tag.slug }
+    foldable = [g for g in scopedSlugs if g not in binding]
+
+    # ② 이 슬라이스**만** 핀한 상위 문서
+    #    그냥 접으면 그 문서가 바뀌어도 ④가 **아무 데서도 안 운다** — 하네스의 존재 이유를 깎는 자리다.
+    pinners = {}                       # path -> {slug…}
+    for g in scopedSlugs:
+        for pin in readPins(f"{specsDir}/{g}/{requiredPinFile}"):
+            pinners.setdefault(pin.path, set()).add(g)
+    sole = [(path, only(gs)) for path, gs in pinners.items() if len(gs) == 1]
+
+    note(f"구속력 있는 태그가 없는 슬라이스 {len(foldable)}개 — 접을 수 있는지 보세요: …")
+    note("     (allowlist 안 태그는 안 셉니다 — ③이 그걸 안 보기 때문입니다)")
+    note("     → 접는 순서: SKILL.md 「슬라이스를 언제 열고 언제 접나」")
+    note(f"이 슬라이스만 핀한 상위 문서 {len(sole)}건 — 그냥 접으면 ④가 아무 데서도 안 웁니다")
+    note("     → 접기 전에 핀을 옮기세요(접는 순서 2번)")
+```
+
+- **위반이 아니라 정보(`·`)다.** 아직 코드를 안 쓴 진행 중 슬라이스도 걸리므로 **종료코드를 안 바꾼다.**
+  판단은 사람이 한다.
+- **숫자만 내지 않는다.** 다음에 무엇을 하라는 줄을 함께 낸다 — 실사용 제보: 자기네 게이트에
+  *"건너뛴 시험 N개"* 를 찍었는데 **할 일이 없어서 한동안 아무도 안 봤다.**
+
 ## 6. 리포트
 
 사람용 출력은 **위반 하나당 한 블록**: `규칙 · 대상(파일 또는 slug) · 무슨 일 · 조치 한 줄`.

@@ -351,7 +351,13 @@ for (const f of changed) {
   if (t.kind !== 'tag') continue;                       // 태그 없음은 ①이 이미 잡았다
   if (!sliceChangedDirs.has(t.slug)) {
     violate('coupling', f, `코드가 바뀌었는데 슬라이스(${P.specsDir}/${t.slug})에 변경이 없음`,
-      `spec/plan/tasks를 먼저 갱신하거나, 사유와 함께 커밋 트레일러 \`${P.exempt.commitTrailer}: …\``, { slug: t.slug });
+      // **「흡수」를 말한다(⑥과 같은 어휘).** 예전엔 "먼저 갱신하거나 … 면제"였는데, 읽는 쪽에서
+      // 「갱신」은 *닫힌 슬라이스를 다시 여는 것*으로, 「면제」는 *규칙을 피하는 것*으로 보였다.
+      // 그래서 **문구에 없는 셋째 길(새 슬라이스를 만들고 태그를 옮긴다)이 제일 떳떳해 보였고**,
+      // 실사용에서 슬라이스가 78개까지 늘었다(절반 이상이 제품 기능이 아니었다).
+      `이 변경을 흡수할 슬라이스의 spec/plan/tasks를 갱신하라 — **기존 슬라이스여도 된다**`
+      + `(새로 만들 필요 없다). 무관한 변경이면 커밋 트레일러 \`${P.exempt.commitTrailer}: …\`로 면제.`,
+      { slug: t.slug });
   }
 }
 
@@ -478,6 +484,47 @@ if ((P.pins.impactUnit ?? 'file') === 'anchor') {
 }
 for (const slug of scopedSlugs) checkPins(readPins(`${P.specsDir}/${slug}/${P.requiredPinFile}`), slug);
 if (P.pins.globalPinFile) checkPins(readPins(P.pins.globalPinFile), '<project>');   // 전역 원칙은 한 번만 본다
+
+// ─────────────────── 접을 후보 가시화 (위반 아님 · 정보 등급) ───────────────────
+// 규칙 일곱이 전부 **변화**에 반응하고 **은퇴**를 말하는 자리가 없으면 슬라이스는 단조증가한다
+// (실사용: 다섯 달에 78개, 절반 이상이 제품 기능이 아니었다). 접기는 원래 막힌 적이 없는데
+// **접어도 된다는 말과 순서가 없었을 뿐**이다. 그래서 여기서 **후보를 세어 준다**.
+//
+// **위반이 아니라 정보(`·`)다** — 아직 코드를 안 쓴 진행 중 슬라이스도 걸리므로 종료코드를 안 바꾼다.
+if (opts.mode === 'full' && scopedSlugs.length) {
+  // ① 구속력 있는 태그가 없는 슬라이스. **allowlist 안의 태그는 세지 않는다** —
+  //    ③이 `isGoverned`를 먼저 보므로 그 태그는 검사기가 안 본다(장식이다).
+  const binding = new Set();
+  for (const f of governed) {
+    const t = readTag(f);
+    if (t && t.slug) binding.add(t.slug);
+  }
+  const foldable = scopedSlugs.filter((g) => !binding.has(g));
+
+  // ② **이 슬라이스만** 핀한 상위 문서. 그냥 접으면 그 문서가 바뀌어도 ④가 **아무 데서도 안 운다**.
+  const pinners = new Map();
+  for (const g of scopedSlugs) {
+    for (const pin of readPins(`${P.specsDir}/${g}/${P.requiredPinFile}`)) {
+      if (!pinners.has(pin.path)) pinners.set(pin.path, new Set());
+      pinners.get(pin.path).add(g);
+    }
+  }
+  const sole = [...pinners.entries()].filter(([, gs]) => gs.size === 1)
+    .map(([doc, gs]) => [doc, [...gs][0]]).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
+  if (foldable.length) {
+    notes.push(`구속력 있는 태그가 없는 슬라이스 ${foldable.length}개 — 접을 수 있는지 보세요: `
+      + foldable.slice(0, 8).join(', ') + (foldable.length > 8 ? ` 외 ${foldable.length - 8}개` : ''));
+    notes.push('     (allowlist 안 태그는 안 셉니다 — ③이 그걸 안 보기 때문입니다)');
+    notes.push('     → 접는 순서: SKILL.md 「슬라이스를 언제 열고 언제 접나」');
+  }
+  if (sole.length) {
+    notes.push(`이 슬라이스만 핀한 상위 문서 ${sole.length}건 — 그냥 접으면 ④가 아무 데서도 안 웁니다`);
+    for (const [doc, g] of sole.slice(0, 5)) notes.push(`     ${g} → ${doc}`);
+    if (sole.length > 5) notes.push(`     외 ${sole.length - 5}건`);
+    notes.push('     → 접기 전에 핀을 옮기세요(접는 순서 2번)');
+  }
+}
 
 // ─────────────────────────────── 등기부(어댑터) ───────────────────────────────
 
