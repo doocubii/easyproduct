@@ -497,8 +497,13 @@ for f in CHANGED:
         continue
     if t['slug'] not in slice_changed_dirs:
         violate('coupling', f, f"코드가 바뀌었는데 슬라이스({P['specsDir']}/{t['slug']})에 변경이 없음",
-                f"spec/plan/tasks를 먼저 갱신하거나, 사유와 함께 커밋 트레일러 "
-                f"`{P['exempt'].get('commitTrailer', 'SDD-Exempt')}: …`", slug=t['slug'])
+                # **「흡수」를 말한다(⑥과 같은 어휘).** 예전엔 "먼저 갱신하거나 … 면제"였는데,
+                # 읽는 쪽에서 「갱신」은 *닫힌 슬라이스를 다시 여는 것*으로, 「면제」는 *규칙을 피하는 것*으로
+                # 보였다. 그래서 **문구에 없는 셋째 길(새 슬라이스를 만들고 태그를 옮긴다)이 제일 떳떳해
+                # 보였고**, 실사용에서 슬라이스가 78개까지 늘었다(절반 이상이 제품 기능이 아니었다).
+                f"이 변경을 흡수할 슬라이스의 spec/plan/tasks를 갱신하라 — **기존 슬라이스여도 된다**"
+                f"(새로 만들 필요 없다). 무관한 변경이면 커밋 트레일러 "
+                f"`{P['exempt'].get('commitTrailer', 'SDD-Exempt')}: …`로 면제.", slug=t['slug'])
 
 
 # ─────────────────────────────── ⑥ 역결합 ───────────────────────────────
@@ -670,6 +675,47 @@ for slug in scoped_slugs:
     check_pins(read_pins(f"{P['specsDir']}/{slug}/{P['requiredPinFile']}"), slug)
 if P['pins'].get('globalPinFile'):
     check_pins(read_pins(P['pins']['globalPinFile']), '<project>')   # 전역 원칙은 한 번만 본다
+
+
+# ─────────────────── 접을 후보 가시화 (위반 아님 · 정보 등급) ───────────────────
+# 규칙 일곱이 전부 **변화**에 반응하고 **은퇴**를 말하는 자리가 없으면 슬라이스는 단조증가한다
+# (실사용: 다섯 달에 78개, 절반 이상이 제품 기능이 아니었다). 접기는 원래 막힌 적이 없는데
+# **접어도 된다는 말과 순서가 없었을 뿐**이다. 그래서 여기서 **후보를 세어 준다**.
+#
+# **위반이 아니라 정보(`·`)다** — 아직 코드를 안 쓴 진행 중 슬라이스도 걸리므로 종료코드를 안 바꾼다.
+# 판단은 사람이 한다.
+if OPTS['mode'] == 'full' and scoped_slugs:
+    # ① 구속력 있는 태그가 없는 슬라이스. **allowlist 안의 태그는 세지 않는다** —
+    #    ③이 `is_governed`를 먼저 보므로 그 태그는 검사기가 안 본다(장식이다).
+    #    실사용자가 이걸 몰라 시험·하네스의 태그까지 세는 바람에 처음에 일곱 개밖에 못 줄였다.
+    binding = set()
+    for f in GOVERNED:
+        t = read_tag(f)
+        if t and t.get('slug'):
+            binding.add(t['slug'])
+    foldable = [g for g in scoped_slugs if g not in binding]
+
+    # ② **이 슬라이스만** 핀한 상위 문서. 그냥 접으면 그 문서가 바뀌어도 ④가 **아무 데서도 안 운다** —
+    #    하네스가 존재하는 이유를 스스로 깎는 자리라, 접기 전에 핀을 옮겨야 한다.
+    #    실사용자는 이걸 스크립트를 짜서 셌다.
+    pinners = {}
+    for g in scoped_slugs:
+        for pin in read_pins(f"{P['specsDir']}/{g}/{P['requiredPinFile']}"):
+            pinners.setdefault(pin['path'], set()).add(g)
+    sole = sorted((doc, next(iter(gs))) for doc, gs in pinners.items() if len(gs) == 1)
+
+    if foldable:
+        notes.append(f"구속력 있는 태그가 없는 슬라이스 {len(foldable)}개 — 접을 수 있는지 보세요: "
+                     + ', '.join(foldable[:8]) + (f" 외 {len(foldable) - 8}개" if len(foldable) > 8 else ""))
+        notes.append('     (allowlist 안 태그는 안 셉니다 — ③이 그걸 안 보기 때문입니다)')
+        notes.append('     → 접는 순서: SKILL.md 「슬라이스를 언제 열고 언제 접나」')
+    if sole:
+        notes.append(f"이 슬라이스만 핀한 상위 문서 {len(sole)}건 — 그냥 접으면 ④가 아무 데서도 안 웁니다")
+        for doc, g in sole[:5]:
+            notes.append(f"     {g} → {doc}")
+        if len(sole) > 5:
+            notes.append(f"     외 {len(sole) - 5}건")
+        notes.append('     → 접기 전에 핀을 옮기세요(접는 순서 2번)')
 
 
 # ─────────────────────────────── 등기부(어댑터) ───────────────────────────────

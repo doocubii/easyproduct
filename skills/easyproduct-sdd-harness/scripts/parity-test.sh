@@ -212,6 +212,41 @@ run_regressions() {
     "[x for x in v if '죽은 링크' in x['message'] and 'FEAT.billing' in x['message']]==[]" -- --full
   expect "A-2 깊은 계열(UI.form.field.*) → 유령 없음" \
     "[x for x in v if '죽은 링크' in x['message'] and 'UI.form' in x['message']]==[]" -- --full
+  # H: 접을 후보 가시화. 규칙 일곱이 전부 **변화**에만 반응하고 **은퇴**를 말하는 자리가 없으면
+  #    슬라이스는 단조증가한다(실사용: 다섯 달에 78개, 절반 이상이 제품 기능이 아니었다).
+  #    접기는 원래 막힌 적이 없었고 **접어도 된다는 말과 순서가 없었을 뿐**이라, 여기서 후보를 세어 준다.
+  n() { python3 -c "
+import json
+print('\n'.join(json.load(open('$WORK/out.json')).get('notes') or []))
+"; }
+  # H-1: allowlist 안 태그는 **구속력이 없다** — ③이 is_governed 를 먼저 보므로 검사기가 안 본다(장식).
+  #      실사용자가 이걸 몰라 시험·하네스의 태그까지 세는 바람에 처음에 일곱 개밖에 못 줄였다.
+  mkdir -p specs/900-decor-only/checklists tests
+  printf 'spec\n' > specs/900-decor-only/spec.md
+  printf 'plan\n' > specs/900-decor-only/plan.md
+  printf 'tasks\n' > specs/900-decor-only/tasks.md
+  printf 'c\n'    > specs/900-decor-only/checklists/c.md
+  printf '{ "sources": [] }\n' > specs/900-decor-only/sources.json
+  printf '# @sdd 900-decor-only\nx = 1\n' > tests/decor_test.py
+  expect "H-1 allowlist 안 태그뿐인 슬라이스는 접을 후보로 뜬다" \
+    "'900-decor-only' in ' '.join(d.get('notes') or [])" -- --full
+  expect "H-1 다음에 할 일(접는 순서)을 함께 준다" \
+    "any('접는 순서' in x for x in (d.get('notes') or []))" -- --full
+  expect "H-1 정보 등급이라 종료코드를 안 바꾼다(위반 아님)" \
+    "[x for x in v if '900-decor-only' in str(x)]==[]" -- --full
+  # H-2: **구속력 있는** 태그가 붙으면 후보에서 빠진다(반대편 — 이 시험이 아무 일도 안 하는 경우와 구분).
+  printf '// @sdd 900-decor-only\nexport const x = 1;\n' > src/auth/decor.ts
+  expect "H-2 관장 소스에 태그가 붙으면 후보에서 빠진다" \
+    "'900-decor-only' not in ' '.join(d.get('notes') or [])" -- --full
+  rm -f src/auth/decor.ts tests/decor_test.py && rm -rf specs/900-decor-only
+  # H-3: **이 슬라이스만 핀한 상위 문서** — 그냥 접으면 그 문서가 바뀌어도 ④가 아무 데서도 안 운다.
+  #      실사용자는 이 자리를 스크립트를 짜서 셌다(접는 순서 2번).
+  expect "H-3 이 슬라이스만 핀한 상위 문서를 짚는다" \
+    "any('이 슬라이스만 핀한' in x for x in (d.get('notes') or []))" -- --full
+  expect "H-3 핀을 옮기라고 안내한다" \
+    "any('핀을 옮기' in x for x in (d.get('notes') or []))" -- --full
+  git checkout -q . 2>/dev/null || true
+
   # B: 요구 단위는 FR-/SC- — 템플릿 헤딩(Edge Cases·Key Entities·User Story)은 요구가 아니다.
   expect "B 템플릿 헤딩을 요구로 오판하지 않음" \
     "[x for x in v if '근거 없는 요구' in x['message'] and ('Edge Cases' in x['message'] or 'Key Entities' in x['message'] or 'User Story' in x['message'])]==[]" -- --full
