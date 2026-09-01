@@ -210,6 +210,73 @@ if (!existsSync(join(SUITE_DIR, 'scripts', 'check-docs.mjs'))) {
   }
 }
 
+// --- (G) 점검기의 TOOL_VERSION 이 세트 버전과 같은가 -------------------------
+// 그 값이 생성물(`interface-request`)에 찍혀 나가고, 나중에 "생성기가 그 뒤 자랐나"를 판정하는 근거가 된다.
+// 어긋나면 **자란 뒤에도 조용히 통과**하거나 **안 자랐는데 다시 뽑으라고** 한다 — 둘 다 나쁘다.
+// (앵커 등기부·revision 정의와 같은 방식: 각자 값을 품고 여기서 대조해 드리프트를 막는다.)
+{
+  const checkerPath = join(SUITE_DIR, 'scripts', 'check-docs.mjs');
+  const suiteSkill = join(SUITE_DIR, 'SKILL.md');
+  try {
+    const declared = /const TOOL_VERSION = '([^']+)'/.exec(readFileSync(checkerPath, 'utf8'));
+    const meta = /^- \*\*버전\*\*: `([^`]+)`$/m.exec(readFileSync(suiteSkill, 'utf8'));
+    if (!declared) errors.push(`${rel(checkerPath)}: TOOL_VERSION 상수를 못 찾음(생성물 판 표시의 근거가 사라진다).`);
+    else if (!meta) errors.push(`${rel(suiteSkill)}: 메타 정보의 버전을 못 찾음(TOOL_VERSION 대조 불가).`);
+    else if (declared[1] !== meta[1]) {
+      errors.push(`check-docs.mjs 의 TOOL_VERSION(${declared[1]})이 suite SKILL.md 버전(${meta[1]})과 다름 — `
+        + `생성물에 찍히는 판 표시가 어긋나 "생성기가 자랐나" 판정이 틀린다. 버전업 때 함께 올려라.`);
+    } else notes.push(`TOOL_VERSION ${declared[1]} — 세트 버전과 일치.`);
+  } catch (e) {
+    errors.push(`TOOL_VERSION 대조 실패: ${e.message}`);
+  }
+}
+
+// --- (H) gap-fill 절차를 가진 스킬이 **그 문을 여는 말**을 description 에 갖고 있나 -------------
+// 업그레이드 경로(감지·채움·가시화·검증)를 다 만들어 놓고도, **사용자가 "문서 현행화해줘"라고 했을 때
+// 스킬이 발동하지 않으면 그 경로 전체에 닿지 못한다.** 실제로 그런 상태였다 — Step 1 재진입에 트리거를
+// 12가지 넣어 뒀는데 오케스트레이터 description 에 "현행화·업그레이드"가 한 마디도 없었다.
+{
+  const NEED = ['easyproduct-suite', 'easyproduct-backend', 'easyproduct-screen-design',
+                'easyproduct-ia-designer', 'easyproduct-policy-legal', 'easyproduct-data-model'];
+  const WORDS = /현행화|업그레이드|최신 구조|형식 최신|낡은 형식|예전 형식/;
+  for (const name of NEED) {
+    const f = join(SKILLS_DIR, name, 'SKILL.md');
+    let txt;
+    try { txt = readFileSync(f, 'utf8'); } catch { continue; }   // 그 스킬이 없는 배포는 건너뛴다
+    const fm = /^---\n([\s\S]*?)\n---/.exec(txt);
+    if (!fm) { errors.push(`${rel(f)}: frontmatter 를 못 찾음(발동어 점검 불가).`); continue; }
+    if (!WORDS.test(fm[1])) {
+      errors.push(`${rel(f)}: description 에 **업그레이드 발동어**가 없음(현행화·업그레이드·최신 구조 등). `
+        + `gap-fill 절차가 있어도 사용자가 "문서 현행화해줘"라고 할 때 스킬이 발동하지 않아 `
+        + `업그레이드 경로 전체에 닿지 못한다.`);
+    }
+  }
+  if (!errors.some((e) => e.includes('업그레이드 발동어'))) notes.push('업그레이드 발동어 — gap-fill 스킬 6개 전부 보유.');
+}
+
+// --- (I) 설치 스크립트가 읽는 버전이 **실제 버전과 같은가** ---------------------
+// 설치기는 SKILL.md 에서 버전을 뽑아 보고한다. 그 규칙이 본문 인용까지 잡으면 **최신을 깔면서
+// 옛 버전이라고 보고**한다 — 파일은 맞는데 표시만 틀리니, 사용자는 "설치가 안 됐다"고 읽고
+// 원인을 엉뚱한 데서 찾는다(실제 사고: `0.12.8` 을 깔며 `0.11.0` 이라고 했다. 본문에 벤더 사본이
+// `0.11.0` 에 멈췄다는 설명문이 있었고, 그게 먼저 잡혔다).
+// **여기서 같은 규칙으로 읽어 메타 줄의 값과 대조한다.**
+{
+  const suiteSkill = join(SUITE_DIR, 'SKILL.md');
+  try {
+    const txt = readFileSync(suiteSkill, 'utf8');
+    const meta = /^- \*\*버전\*\*: `([^`]+)`$/m.exec(txt);
+    // 설치기 규칙: **줄 끝에 홀로 놓인** 백틱 버전의 첫 매치
+    const asInstaller = /`([0-9]+\.[0-9]+\.[0-9]+)`[ \t]*$/m.exec(txt);
+    if (!meta) errors.push(`${rel(suiteSkill)}: 메타 정보의 버전 줄을 못 찾음.`);
+    else if (!asInstaller) errors.push(`${rel(suiteSkill)}: 설치 스크립트 규칙으로 버전을 못 읽음 — 설치기가 "알 수 없음"을 보고한다.`);
+    else if (asInstaller[1] !== meta[1]) {
+      errors.push(`설치 스크립트가 읽을 버전(${asInstaller[1]})이 메타 버전(${meta[1]})과 다름 — `
+        + `본문의 버전 인용이 먼저 잡혔다. 최신을 깔면서 옛 버전이라고 보고하게 된다. `
+        + `인용은 줄 끝에 홀로 두지 말고 뒤에 글자를 붙여라(예: \`0.11.0\`에).`);
+    } else notes.push(`설치 스크립트가 읽을 버전 ${asInstaller[1]} — 메타와 일치.`);
+  } catch (e) { errors.push(`설치 버전 대조 실패: ${e.message}`); }
+}
+
 // --- 보고 ---
 console.log(`skill-lint: 스킬 ${skillDirs.length}개, 스키마 ${schemaCount}개 점검.`);
 for (const n of notes) console.log(`  · ${n}`);

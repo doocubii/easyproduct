@@ -1137,5 +1137,530 @@ expect_no_out "한 파일 세트에는 범위 어긋남을 말하지 않는다" 
 expect_no_out "한 파일 안에서는 중복도 아니다" "중복 기능 정의"
 
 echo
+echo "[25] 근거가 요청서를 안 탄 인터페이스 — 갈래를 갈라 안내한다"
+# 실측 사고: 요청이 이슈로 왔는데 basis가 필수라 엉뚱한 화면 동작 id를 갖다 붙였고, id가 실재하니
+# 점검기가 통과시켰다. 그런데 그 4건의 답은 `ops`가 아니라 **화면 설계서**였다 —
+# 서버를 거치는 동작이 target: client로 적혀 있어 요청서에서 빠진 것이었다.
+# 한 갈래로 뭉쳐 "ops를 쓰라"고 안내하면 엉뚱한 곳을 고치게 된다.
+BS="$WORK/basis"
+mkdir -p "$BS/screens/user/schemas" "$BS/ssot/backend/schemas" "$BS/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$BS/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$BS/interface-requests/user/schemas/"
+bisrc="$(find "$HERE/../.." -name "backend-interface.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$bisrc" ] && cp "$bisrc" "$BS/ssot/backend/schemas/"
+mkscr() {  # $1 = target — 따옴표 있는 heredoc으로 쓰고 자리표시자만 바꾼다(백틱이 명령 치환되지 않게)
+cat > "$BS/screens/user/screen-design-user-law.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.law.review", "feat": "FEAT.law.review", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.law.review.editList", "action": "법령 담기", "target": "__TARGET__",
+      "auth": { "required": true }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+  sed -i "s/__TARGET__/$1/" "$BS/screens/user/screen-design-user-law.md"
+  grep -q "\"target\": \"$1\"" "$BS/screens/user/screen-design-user-law.md" || bad "픽스처 편집이 안 먹었다($1)"
+}
+cat > "$BS/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{ "interfaces": [ { "id": "BEITF.user.law.add", "summary": "법령 담기",
+  "transport": "rest", "binding": { "method": "POST", "path": "/laws" },
+  "auth": { "mode": "session", "desc": "로그인 필요" },
+  "request": { "fields": [ { "name": "lawId", "in": "body", "type": "string", "desc": "법령 ID",
+                             "enum": ["a","b"], "optional": true } ] },
+  "response": { "fields": [ { "name": "ok", "type": "boolean", "desc": "성공" } ] },
+  "basis": [ { "kind": "screen-io", "ref": "IO.law.review.editList" } ] } ] }
+```
+MD
+# 요청서는 있으나 그 동작이 안 실렸다(화면이 client라 생성에서 빠짐)
+cat > "$BS/interface-requests/user/interface-request-user-other.md" <<'MD'
+---
+doc_type: interface-request
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: interface.requests
+  item: request-list
+  schema: schemas/interface-request.v1.schema.json
+---
+```json interface.requests
+{ "generatedAt": "2026-08-27", "scope": "user", "domain": "other",
+  "from": [ { "path": "screens/user/screen-design-user-law.md", "contentHash": "sha256:x" } ],
+  "requests": [ { "ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것",
+                  "sends": [], "receives": [] } ] }
+```
+MD
+# (가) target: client → **화면 설계서를 고치라**고 안내해야 한다
+mkscr client
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "요청서를 안 탄 근거를 잡는다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
+expect_out "화면 설계서를 고치라고 안내한다" "화면 설계서를 고치세요"
+expect_out "ops로 바꾸지 말라고 못박는다" "\`ops\`로 바꾸지 마세요"
+
+# (나) target: server 인데 요청서에 없음 → **요청서를 다시 뽑으라**고 안내해야 한다
+mkscr server
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "이때는 요청서 재생성을 안내한다" "요청서를 다시 뽑으세요"
+expect_no_out "이때는 화면 설계서를 고치라고 하지 않는다" "화면 설계서를 고치세요"
+
+# (다) 요청서에 실리면 조용하다
+sed -i 's|"ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것"|"ref": "IO.law.review.editList", "screen": "FEAT.law.review", "action": "법령 담기"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_no_out "요청서에 실려 있으면 아무 말도 하지 않는다" "요청서에 없는 동작을 근거로"
+
+# (라) 별칭 키 집계 — 표준은 values·required 다
+expect_out "허용값 별칭(enum)을 집계한다" "enum 1건"
+expect_out "필수 여부 별칭(optional)도 집계한다" "optional 1건"
+expect_out "표준 이름을 알려준다" "허용값 \`values\` · 필수 여부 \`required\`"
+
+# (마) **수확된 적 없는 화면 문서**의 동작은 판정하지 않는다 — 한 트랙 요청서만 가진 리포에서
+#      그 트랙 전체가 통째로 위반으로 뜨는 오탐을 막는다. 요청서가 이 화면에서 나온 적이 없으면
+#      "아직 요청서가 없는 것"이지 근거가 틀린 것이 아니다.
+mkscr client
+sed -i 's|"path": "screens/user/screen-design-user-law.md"|"path": "screens/user/screen-design-user-other.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+sed -i 's|"ref": "IO.law.review.editList", "screen": "FEAT.law.review", "action": "법령 담기"|"ref": "IO.law.other.load", "screen": "FEAT.law.other", "action": "다른 것"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_no_out "수확된 적 없는 화면의 동작은 근거 판정에서 빼둔다" "요청서에 없는 동작을 근거로"
+# 같은 화면이 한 번이라도 수확됐으면 다시 판정한다(위 제외가 검사를 통째로 끄지 않는다)
+sed -i 's|"path": "screens/user/screen-design-user-other.md"|"path": "screens/user/screen-design-user-law.md"|' \
+  "$BS/interface-requests/user/interface-request-user-other.md"
+node "$CHECK" "$BS" > "$WORK/out.txt" 2>&1
+expect_out "그 화면이 수확되면 다시 판정한다" "요청서에 없는 동작을 근거로 든 인터페이스 1건"
+
+echo
+echo "[26] 목록의 항목 모양 · 근거 갈래 · 받는 쪽 일회성"
+IT="$WORK/items"
+mkdir -p "$IT/ssot/backend/schemas" "$IT/screens/user/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$IT/ssot/backend/schemas/"
+cp "$SET/schemas/screen-design.v1.schema.json" "$IT/screens/user/schemas/"
+mkitf() {  # $1 = interfaces 배열 JSON
+cat > "$IT/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+__BODY__
+```
+MD
+  python3 - "$IT/ssot/backend/backend-interface.md" "$1" <<'PY'
+import sys
+p, body = sys.argv[1], sys.argv[2]
+s = open(p, encoding='utf-8').read().replace('__BODY__', body)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+  grep -q '__BODY__' "$IT/ssot/backend/backend-interface.md" && bad "픽스처 치환이 안 먹었다"
+}
+# 파생 출처·일회성 결과 대조에 쓸 데이터 모델(없으면 "실재 변수"가 성립하지 않아 시험이 아무것도 안 한다)
+mkdir -p "$IT/ssot/schemas"
+dmsrc="$(find "$HERE/../.." -name "data-model.v1.schema.json" -path '*/schemas/*' | head -1)"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$IT/ssot/schemas/"
+cat > "$IT/ssot/data-model.md" <<'MD'
+---
+doc_type: data-model
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: datamodel.group
+  item: group
+  schema: schemas/data-model.v1.schema.json
+---
+```json datamodel.group
+{ "group": "law", "label": "법령", "fields": [
+  { "name": "id", "type": "string", "required": true, "filledBy": "system" } ] }
+```
+MD
+
+base='{"id":"BEITF.user.x.list","summary":"목록","transport":"rest","binding":{"method":"GET","path":"/x"},"auth":{"mode":"session","desc":"로그인"},"request":{"fields":[]},"basis":[{"kind":"ops","ref":"운영 요구","why":"배치"}],'
+
+# (가) 목록인데 items 없음 + 근거 갈래 없음
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "목록인데 항목 모양이 없으면 잡는다" "목록인데 항목 모양이 없는 계약 필드 1건"
+expect_out "원소 모양을 적으라고 안내한다" "원소 모양을 적으세요"
+expect_out "근거 갈래 미기재도 잡는다" "근거 갈래가 안 적힌 계약 필드 1건"
+expect_out "반대편(파생인데 dataModel)은 기계가 못 잡는다고 밝힌다" "반대편이 더 위험합니다"
+
+# (나) 펼쳐 적은 것은 **고칠 자리가 다르다** — 형제를 모으는 일이다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\"},{\"name\":\"laws[].id\",\"type\":\"string\",\"desc\":\"법령 ID\",\"dataModel\":\"law.id\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "펼쳐 적었으면 형제를 모으라고 안내한다" "형제 필드를 모으세요"
+expect_no_out "이때는 원소 모양을 새로 적으라고 하지 않는다" "원소 모양을 적으세요"
+
+# (다) items·근거를 갖추면 조용하다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"laws\",\"type\":\"list\",\"desc\":\"법령 목록\",\"transient\":true,\"items\":{\"type\":\"object\",\"desc\":\"법령 하나\",\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"법령 ID\"}]}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "항목 모양과 근거를 갖추면 아무 말도 하지 않는다" "목록인데 항목 모양이 없는"
+expect_no_out "근거 갈래도 조용하다" "근거 갈래가 안 적힌"
+
+# (라) 근거 갈래를 둘 적으면 오류 · 파생 출처는 등기부 대조를 받는다
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"masked\",\"type\":\"string\",\"desc\":\"끝 네 자리\",\"dataModel\":\"law.id\",\"derivedFrom\":{\"from\":[\"law.id\"],\"how\":\"끝 네 자리만 남긴다\"}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "근거 갈래를 둘 적으면 오류다" "근거 갈래가 둘"
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"masked\",\"type\":\"string\",\"desc\":\"끝 네 자리\",\"derivedFrom\":{\"from\":[\"nosuch.field\"],\"how\":\"끝 네 자리만 남긴다\"}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "파생 출처가 데이터 모델에 없으면 죽은 링크다" "파생된 출처 nosuch.field"
+
+# (마) 받는 쪽 일회성 — 실재 변수를 적으면 receives 우회다
+cat > "$IT/screens/user/screen-design-user-x.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.x.list", "feat": "FEAT.x.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.x.list.load", "action": "목록 조회", "target": "server",
+      "auth": { "required": true }, "sends": [], "receives": [],
+      "transientReceives": [ { "name": "totalCount", "desc": "전체 건수" } ] } ] } } ] }
+```
+MD
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "일회성 결과값은 등기부 대조를 받지 않는다" "일회성 결과 totalCount"
+sed -i 's/"name": "totalCount", "desc": "전체 건수"/"name": "law.id", "desc": "전체 건수"/' "$IT/screens/user/screen-design-user-x.md"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "실재 변수를 일회성 결과에 적으면 receives 로 옮기라고 한다" "일회성 결과 law.id"
+
+echo
+echo "[27] 항목 단위 개정 — 스크립트가 계산하고 사람은 올리기만"
+RV="$WORK/rev"
+mkdir -p "$RV/ssot/backend/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$RV/ssot/backend/schemas/"
+mkrev() {  # $1 = path 값, $2 = 추가 키(예: ,"revision":5)
+cat > "$RV/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{"interfaces":[{"id":"BEITF.user.x.get"__EXTRA__,"summary":"조회","transport":"rest","binding":{"method":"GET","path":"__PATH__"},"auth":{"mode":"session","desc":"로그인"},"request":{"fields":[]},"response":{"fields":[]},"basis":[{"kind":"ops","ref":"운영","why":"배치"}]}]}
+```
+MD
+  python3 - "$RV/ssot/backend/backend-interface.md" "$1" "$2" <<'PY'
+import sys
+p, pth, extra = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(p, encoding='utf-8').read().replace('__PATH__', pth).replace('__EXTRA__', extra)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+  grep -q '__PATH__\|__EXTRA__' "$RV/ssot/backend/backend-interface.md" && bad "픽스처 치환이 안 먹었다"
+}
+
+# (가) 기록이 없으면 알린다 — 조용히 통과하지 않는다
+mkrev "/x" ""
+rm -f "$RV/interface-revisions.json"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "개정 기록이 없으면 알린다" "항목 단위 개정 기록이 없습니다"
+expect_out "과거 이력을 지어내지 않는다고 밝힌다" "지어내지 않습니다"
+
+# (나) sync 하면 전부 1로 시작한다
+node "$CHECK" "$RV" --sync-revisions > "$WORK/out.txt" 2>&1
+expect_out "sync 하면 기록한다" "인터페이스 1건 (새로 1"
+[ -f "$RV/interface-revisions.json" ] || bad "interface-revisions.json 이 안 만들어졌다"
+grep -q '"revision": 1' "$RV/interface-revisions.json" || bad "개정 1로 시작하지 않았다"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "바뀐 것이 없으면 일치라고 한다" "항목 단위 개정 1건 — 기록과 일치"
+
+# (다) 계약이 바뀌면 오른다
+mkrev "/x-v2" ""
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "계약이 바뀌면 개정이 오른다" "개정 1 → 2"
+expect_out "어긋남을 집계한다" "기록되지 않은 변경 1건"
+node "$CHECK" "$RV" --check-revisions > /dev/null 2>&1
+[ $? -eq 1 ] || bad "--check-revisions 가 어긋남에 1을 안 냈다"
+
+# (라) **근거만 바뀌면 오르지 않는다** — 계약이 바뀐 게 아니다
+node "$CHECK" "$RV" --sync-revisions > /dev/null 2>&1
+sed -i 's|"why":"배치"|"why":"배치 — 사유를 더 적었다"|' "$RV/ssot/backend/backend-interface.md"
+grep -q "사유를 더 적었다" "$RV/ssot/backend/backend-interface.md" || bad "픽스처 편집이 안 먹었다"
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "근거만 바뀌면 개정이 오르지 않는다" "기록과 일치"
+
+# (마) 사람은 **더 올릴 수만** 있다
+mkrev "/x-v2" ',"revision":7'
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "사람이 올린 것을 존중한다" "사람이 올린 것 1건"
+mkrev "/x-v2" ',"revision":1'
+node "$CHECK" "$RV" > "$WORK/out.txt" 2>&1
+expect_out "계산값보다 작게 적으면 오류다" "보다 작습니다 — 개정은 내려가지 않습니다"
+
+echo
+echo "[28] 재생성이 손으로 적은 것을 지울 때 — 조용히 지우지 않는다"
+# 요청서는 파생물이라 통째로 다시 만들어지고, 계약 문서는 손질하는 곳이라 성질이 반대다.
+# 같은 규약으로 덮으면 요청서 쪽에서만 조용히 샌다(실사용 제보: 스키마에 없는 키를 손으로 넣었는데
+# 다음 생성 때 사라졌다). 지우기 전에 무엇이 지워지는지 알려야 한다.
+RG="$WORK/regen"
+mkdir -p "$RG/screens/user/schemas" "$RG/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$RG/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$RG/interface-requests/user/schemas/"
+cat > "$RG/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth \
+  > "$RG/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+grep -q "IO.auth.login.submit" "$RG/interface-requests/user/interface-request-user-auth.md" || bad "요청서 생성이 안 됐다"
+
+# 아직 손댄 것이 없으면 조용하다 (이 시험이 아무 일도 안 하는 경우와 구분되게 반대편을 먼저 고정한다)
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth > /dev/null 2>"$WORK/out.txt"
+expect_no_out "손댄 것이 없으면 아무 말도 하지 않는다" "재생성이 지웁니다"
+
+# 스키마에 없는 키를 손으로 넣으면 — 지워질 것을 알린다
+python3 - "$RG/interface-requests/user/interface-request-user-auth.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r'(\{\s*\n\s*"ref":)', r'{\n      "items": "손으로 적은 원소 모양",\n      "ref":', s, count=1)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+node "$CHECK" "$RG" --emit-interface-request --scope user --domain auth > /dev/null 2>"$WORK/out.txt"
+expect_out "손으로 넣은 키가 지워질 것을 알린다" "재생성이 지웁니다"
+expect_out "어느 키인지 짚는다" "IO.auth.login.submit 의 items"
+expect_out "원본에 적으라고 안내한다" "원본(화면 설계서)에 적고"
+
+echo
+echo "[29] 일회성 결과가 **수확 → 백엔드 입력 → 요청서**까지 실려 나가나 (층 끝까지)"
+# 도그푸드에서 잡힌 결함: 스키마·검사·생성 코드는 다 있었는데 **수확부(screenIo)가 안 담아서**
+# --emit-needs 와 요청서 표가 늘 비어 있었다. 블록에 적어도 백엔드는 그 요구를 영영 모른다.
+# 회귀가 "블록이 스키마를 통과하나"만 봤기 때문에 통과했다 — 끝까지 따라가는 시험이 없었다.
+TR="$WORK/transrecv"
+mkdir -p "$TR/screens/user/schemas" "$TR/interface-requests/user/schemas" "$TR/ssot/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$TR/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$TR/interface-requests/user/schemas/"
+[ -n "$dmsrc" ] && cp "$dmsrc" "$TR/ssot/schemas/"
+cat > "$TR/screens/user/screen-design-user-order.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.order.list", "feat": "FEAT.order.list", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.order.list.load", "action": "목록 조회", "target": "server",
+      "auth": { "required": true }, "sends": [], "receives": [],
+      "transientReceives": [ { "name": "totalCount", "desc": "전체 건수" } ] } ] } } ] }
+```
+MD
+node "$CHECK" "$TR" --emit-needs > "$WORK/needs.json" 2>/dev/null
+grep -qF "totalCount" "$WORK/needs.json" \
+  && ok "일회성 결과가 백엔드 입력(--emit-needs)에 실린다" \
+  || bad "일회성 결과가 --emit-needs 에서 빠졌다 — 백엔드는 그 요구를 모른다"
+node "$CHECK" "$TR" --emit-interface-request --scope user --domain order > "$WORK/req.md" 2>/dev/null
+grep -qF "totalCount" "$WORK/req.md" \
+  && ok "일회성 결과가 요청서 기계 블록·표에 실린다" \
+  || bad "일회성 결과가 요청서에서 빠졌다"
+grep -qF "일회성 결과" "$WORK/req.md" || bad "요청서 사람용 표에 '일회성 결과' 열이 없다"
+# 반대편: 없으면 키를 만들지 않는다(빈 배열을 실어 "생각했는데 없다"와 섞지 않는다)
+python3 - "$TR/screens/user/screen-design-user-order.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r',\s*\n\s*"transientReceives": \[[^\]]*\]', '', s)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+grep -q "transientReceives" "$TR/screens/user/screen-design-user-order.md" && bad "픽스처 편집이 안 먹었다"
+node "$CHECK" "$TR" --emit-interface-request --scope user --domain order > "$WORK/req2.md" 2>/dev/null
+grep -qF '"transientReceives"' "$WORK/req2.md" && bad "없는데도 transientReceives 키를 실었다" || ok "없으면 키를 만들지 않는다"
+
+echo
+echo "[30] 목록 컨테이너는 근거 갈래를 지지 않는다 (제대로 적은 문서가 벌받지 않게)"
+# 도그푸드에서 잡힌 오탐: items 로 원소 모양을 제대로 적은 목록 컨테이너까지 "근거 미기재"로 잡혔다.
+# 값의 근거는 원소 필드가 지고 컨테이너는 그릇일 뿐이다. 반대편(원소 모양이 없는 목록)은 여전히 잡아야 한다.
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"rows\",\"type\":\"list\",\"desc\":\"목록\",\"items\":{\"type\":\"object\",\"desc\":\"한 줄\",\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"번호\",\"dataModel\":\"law.id\"}]}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "items 를 갖춘 목록 컨테이너는 근거를 요구하지 않는다" "근거 갈래가 안 적힌"
+expect_no_out "그 컨테이너는 항목 모양 경고도 받지 않는다" "목록인데 항목 모양이 없는"
+# 반대편 — items 가 없으면 둘 다 잡는다(이 시험이 아무것도 안 하는 경우와 구분되게)
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"rows\",\"type\":\"list\",\"desc\":\"목록\"}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "items 가 없으면 항목 모양을 요구한다" "목록인데 항목 모양이 없는 계약 필드 1건"
+expect_out "items 가 없으면 근거 갈래도 요구한다" "근거 갈래가 안 적힌 계약 필드 1건"
+
+echo
+echo "[31] 생성기가 자란 뒤로 다시 안 뽑은 요청서 (화면이 그대로라 아무도 못 보던 자리)"
+# 요청서는 화면 + 생성기 로직의 함수인데 신선도 검사는 화면(from[].contentHash)만 본다.
+# 실제 사고: 일회성 결과를 싣게 고쳤는데 옛 요청서는 그 열이 빈 채 남았고 점검기는 "세트 점검 통과"라고 답했다.
+GN="$WORK/gen"
+mkdir -p "$GN/screens/user/schemas" "$GN/interface-requests/user/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$GN/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$GN/interface-requests/user/schemas/"
+cat > "$GN/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$GN" --emit-interface-request --scope user --domain auth \
+  > "$GN/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+# 갓 뽑은 것은 조용하다 (이 시험이 아무 일도 안 하는 경우와 구분되게 먼저 고정)
+node "$CHECK" "$GN" > "$WORK/out.txt" 2>&1
+expect_no_out "갓 뽑은 요청서는 아무 말도 하지 않는다" "생성기가 자란 뒤로"
+grep -qF '"generatedWith"' "$GN/interface-requests/user/interface-request-user-auth.md" \
+  && ok "생성물에 뽑은 판이 찍혀 있다" || bad "생성물에 generatedWith 가 없다 — 판정 근거가 사라진다"
+# 판 표시를 지우면(= 옛 생성기로 뽑힌 것) 다시 뽑으라고 알린다
+python3 - "$GN/interface-requests/user/interface-request-user-auth.md" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+s2 = re.sub(r'\s*"generatedWith": "[^"]*",', '', s)
+assert s != s2, "픽스처 편집이 안 먹었다"
+open(p, 'w', encoding='utf-8').write(s2)
+PY
+node "$CHECK" "$GN" > "$WORK/out.txt" 2>&1
+expect_out "옛 생성기로 뽑힌 요청서를 잡는다" "생성기가 자란 뒤로 다시 안 뽑은 요청서 1건"
+expect_out "다른 검사는 조용하다는 것을 밝힌다" "화면은 그대로라 다른 검사는 아무 말도 하지 않습니다"
+
+echo
+echo "[32] 파생물에는 '개정을 올려라'라고 하지 않는다 (할 수 없는 일을 시키지 않는다)"
+# 요청서는 통째로 다시 뽑히므로 사람이 개정을 매길 자리가 없다. 그래도 내용이 바뀐 건 사실이라
+# 하류(계약) 재검토는 필요하다 — 신호는 살리고 지시만 가른다.
+# 뭉뚱그리면 매 재생성마다 못 할 일을 시켜서 경고가 통째로 무시된다.
+DV="$WORK/derived"
+mkdir -p "$DV/screens/user/schemas" "$DV/interface-requests/user/schemas" "$DV/reference/reviews" "$DV/schemas"
+cp "$SET/schemas/screen-design.v1.schema.json" "$DV/screens/user/schemas/"
+[ -n "$irsrc" ] && cp "$irsrc" "$DV/interface-requests/user/schemas/"
+rvsrc="$(find "$HERE/../.." -name "review.v1.schema.json" | head -1)"
+[ -n "$rvsrc" ] && cp "$rvsrc" "$DV/schemas/"
+cat > "$DV/screens/user/screen-design-user-auth.md" <<'MD'
+---
+doc_type: screen-design
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: screendesign.screens
+  schema: schemas/screen-design.v1.schema.json
+---
+```json screendesign.screens
+{ "screens": [ { "id": "FEAT.auth.login", "feat": "FEAT.auth.login", "components": ["UI.x"],
+  "data": { "display": [], "bindings": [], "io": [
+    { "id": "IO.auth.login.submit", "action": "로그인", "target": "server",
+      "auth": { "required": false }, "sends": [], "receives": [] } ] } } ] }
+```
+MD
+node "$CHECK" "$DV" --emit-interface-request --scope user --domain auth \
+  > "$DV/interface-requests/user/interface-request-user-auth.md" 2>/dev/null
+# 요청서가 **상류**가 되려면 그것을 근거로 삼는 계약이 있어야 한다(없으면 파장 계산에서 빠진다)
+mkdir -p "$DV/ssot/backend/schemas"
+[ -n "$bisrc" ] && cp "$bisrc" "$DV/ssot/backend/schemas/"
+cat > "$DV/ssot/backend/backend-interface.md" <<'MD'
+---
+doc_type: backend-interface
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: backend.interfaces
+  schema: schemas/backend-interface.v1.schema.json
+  namespace: BEITF
+---
+```json backend.interfaces
+{"scope":"user","domain":"auth","interfaces":[{"id":"BEITF.user.auth.login","summary":"로그인","transport":"rest","binding":{"method":"POST","path":"/auth/login"},"auth":{"mode":"session","desc":"로그인 전"},"request":{"fields":[]},"response":{"fields":[]},"basis":[{"kind":"screen-io","ref":"IO.auth.login.submit"}]}]}
+```
+MD
+
+# 리뷰 기준선을 만들되 요청서 해시를 **일부러 옛것으로** 둔다(= 그 뒤 다시 뽑힌 상태)
+cat > "$DV/reference/reviews/review-2026-08-28.md" <<'MD'
+---
+doc_type: review
+version: 1
+revision: 1
+ssot: prose
+machine:
+  lang: json
+  tag: review.record
+  schema: ../../schemas/review.v1.schema.json
+---
+```json review.record
+{ "reviewedAt": "2026-08-28", "trigger": "세트 최초 완성",
+  "sources": [ { "path": "interface-requests/user/interface-request-user-auth.md", "revision": 1, "contentHash": "sha256:0000" } ],
+  "checked": [ { "from": "screens/user/screen-design-user-auth.md", "to": "interface-requests/user/interface-request-user-auth.md", "result": "반영함" } ] }
+```
+MD
+node "$CHECK" "$DV" > "$WORK/out.txt" 2>&1
+expect_out "파생물이 바뀐 것은 알린다(하류 재검토)" "다시 뽑혀 바뀜 — 하류 재검토 필요"
+expect_out "왜 개정을 안 올리는지 밝힌다" "파생물이라 개정 번호를 사람이 올리지 않습니다"
+expect_no_out "파생물에 개정을 올리라고 하지 않는다" "개정 번호 없이 수정됨"
+
+echo
 echo "결과: 통과 $pass · 실패 $fail"
 exit $((fail > 0 ? 1 : 0))

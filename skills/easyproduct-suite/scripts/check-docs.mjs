@@ -19,6 +19,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+// 이 점검기·생성기가 속한 **세트 버전**. 생성물(`interface-request`)에 찍혀 나가고, 그 값이 이 값과
+// 다르면 "생성기가 그 뒤 자랐다 — 다시 뽑으세요"를 알린다. 요청서는 화면 + 생성기 로직의 함수인데
+// 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
+// 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
+// **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
+const TOOL_VERSION = '0.12.9';
+
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
   const m = md.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
@@ -70,6 +77,29 @@ function scalarOrList(v) {
 }
 
 // ── JSON Schema 검증기 (이 세트 스키마가 쓰는 부분집합) ──
+// 정규식을 사람이 읽을 수 있는 한 줄로 바꾼다. 흔한 anchor 꼴은 **마디 수까지** 밝힌다 —
+// "패턴 위반"만으로는 `FEAT.a.b.c`가 왜 안 되는지 알 수 없다.
+function patternHint(pat) {
+  // 패턴을 마디로 갈라 **실제 형식**을 보여준다. 마디에는 두 갈래가 있다 —
+  // 리터럴(`BEARCH.mod.*`의 `mod`처럼 그 글자 그대로)과 자리(문자 클래스). 이걸 뭉뚱그려
+  // `<이름>`으로만 안내하면 **그대로 따라 해도 또 틀린다**(도그푸드에서 실제로 그랬다).
+  const body = pat.replace(/^\^/, '').replace(/\$$/, '');
+  if (!body.includes('\\.')) return `정규식 \`${pat}\`에 맞는 값`;
+  const NAMES = { FEAT: '기능', DATA: '데이터 그룹', POL: '정책 규칙', UI: 'UI 컴포넌트', SCN: '시나리오',
+                  IO: '화면 동작', FRAME: '공통 프레임', BEITF: '인터페이스', BESTORE: '저장소',
+                  BESCHEMA: '논리 테이블', BEARCH: '시스템 조각' };
+  const parts = body.split('\\.');
+  // 갈라진 마디가 전부 리터럴이거나 단순 자리여야 안내가 정확하다. 아니면 정규식을 그대로 보여준다.
+  const shown = [];
+  for (const seg of parts) {
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(seg)) shown.push(seg);                 // 리터럴 마디
+    else if (/^\[[^\]]+\]/.test(seg)) shown.push('<이름>');                   // 자리 마디
+    else return `정규식 \`${pat}\`에 맞는 값`;                                // 모르는 꼴은 지어내지 않는다
+  }
+  const what = NAMES[parts[0]] ? `${NAMES[parts[0]]} id` : 'id';
+  return `\`${shown.join('.')}\` 꼴의 ${what}`;
+}
+
 // `root`는 `$ref` 해석의 기준이다(스키마 최상위). 재귀할 때 함께 넘긴다.
 function validate(obj, schema, p, errs, root) {
   root = root || schema;
@@ -85,7 +115,11 @@ function validate(obj, schema, p, errs, root) {
   if (schema.const !== undefined && obj !== schema.const) errs.push(`${p} = ${JSON.stringify(obj)} (const ${JSON.stringify(schema.const)} 아님)`);
   if (schema.enum && !schema.enum.includes(obj)) errs.push(`${p} = ${JSON.stringify(obj)} (허용값 ${schema.enum.join('|')} 아님)`);
   if (schema.type && !typeOk(obj, schema.type)) { errs.push(`${p} 타입 ${schema.type} 아님`); return; }
-  if (schema.pattern && typeof obj === 'string' && !new RegExp(schema.pattern).test(obj)) errs.push(`${p} = "${obj}" (패턴 위반)`);
+  // **무엇을 어겼는지 말해 준다.** "패턴 위반"만 내면 규칙을 모르는 사람은 고칠 수가 없다
+  // (도그푸드에서 `FEAT.a.b.c`가 거절됐는데 마디가 몇 개여야 하는지 알 길이 없었다).
+  if (schema.pattern && typeof obj === 'string' && !new RegExp(schema.pattern).test(obj)) {
+    errs.push(`${p} = "${obj}" (형식이 다릅니다 — 이 값은 ${patternHint(schema.pattern)} 이어야 합니다)`);
+  }
   if (schema.type === 'array' && Array.isArray(obj)) {
     if (schema.minItems != null && obj.length < schema.minItems) errs.push(`${p} 항목 ${obj.length} < 최소 ${schema.minItems}`);
     if (schema.items) obj.forEach((it, i) => validate(it, schema.items, `${p}[${i}]`, errs, root));
@@ -226,6 +260,10 @@ const reqTransport = argVal('--transport');
 const reqScope = argVal('--scope');
 const reqDomain = argVal('--domain');
 const listDomains = args.includes('--list-domains');
+// 항목 단위 개정. **사람이 적게 하면 빈다** — 실측: 계약 130건 중 117건(90%)이 근거를 한 줄만 적었고,
+// 그걸 근거로 만든 검사의 "미해결 9건"이 전부 오탐이었다. 그래서 **스크립트가 계산하고 사람은 올리기만** 한다.
+const syncRev = args.includes('--sync-revisions');
+const checkRev = args.includes('--check-revisions');
 const root = args.find(a => !a.startsWith('--'));
 if (!root) {
   console.error('사용법: node check-docs.mjs <문서세트-루트> [--print-snapshot]');
@@ -235,6 +273,8 @@ if (!root) {
   console.error('  --emit-interface-request --scope <범위> --domain <도메인> [--transport rest|grpc|graphql|ws|queue]');
   console.error('                     : 프론트가 백엔드에 넘길 **인터페이스 요청서(md)**를 생성해 stdout으로 출력');
   console.error('                       요청서는 **출처 화면 문서 1개당 1개**다(범위·도메인별로 갈린다).');
+  console.error('  --sync-revisions  : 인터페이스마다 개정 번호를 계산해 interface-revisions.json 에 기록(파일을 쓴다)');
+  console.error('  --check-revisions : 기록된 개정 번호가 지금 계약과 맞는지 **대조만** 한다(CI용, 어긋나면 1)');
   console.error('  --emit-interface-request --scope <범위> --list-domains');
   console.error('                     : 그 범위에서 요청서를 뽑을 도메인 목록을 출력(호출 측이 돌면서 뽑는다)');
   process.exit(2);
@@ -450,7 +490,7 @@ for (const doc of loaded) {
         screenIo.push({ id: a.id || null, screen: fr.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, auth: a.auth || null,
                         sends: a.sends || [], transientSends: a.transientSends || [],
-                        receives: a.receives || [],
+                        receives: a.receives || [], transientReceives: a.transientReceives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: null,
                         frame: fr.id, appliesTo: fr.appliesTo || null, doc: doc.path });
       }
@@ -483,7 +523,7 @@ for (const doc of loaded) {
         screenIo.push({ id: a.id || null, screen: s.id, action: a.action, target: a.target || null,
                         ui: a.ui || null, auth: a.auth || null,
                         sends: a.sends || [], transientSends: a.transientSends || [],
-                        receives: a.receives || [],
+                        receives: a.receives || [], transientReceives: a.transientReceives || [],
                         policies: a.policies || [], semantics: a.semantics || null, op: a.op || null, doc: doc.path });
       }
     }
@@ -492,11 +532,15 @@ for (const doc of loaded) {
 
 // 문서별 현재 상태(개정 번호·내용 해시) — 신선도 판정과 요청서의 출처 스냅샷이 함께 쓴다.
 const cur = new Map();   // path → {revision, hash}
+// **파생물**(통째로 다시 뽑히는 산출물). 사람이 개정을 매길 자리가 없으므로 개정 지시를 하지 않는다.
+const DERIVED_TYPES = new Set(['interface-request']);
+const docTypeOf = new Map(); // path → doc_type
 for (const d of allDocs) {
   try {
     const text = fs.readFileSync(path.resolve(root, d.path), 'utf8');
     const fm = parseFrontmatter(text) || {};
     const rev = fm.revision == null ? null : Number(fm.revision);
+    docTypeOf.set(d.path, d.docType);
     cur.set(d.path, { revision: Number.isNaN(rev) ? null : rev, hash: 'sha256:' + crypto.createHash('sha256').update(text.split('\r\n').join('\n')).digest('hex') });
   } catch { /* 위에서 이미 보고됨 */ }
 }
@@ -533,6 +577,11 @@ if (schemaCopyUnchecked.size) {
 report('\n[2] 크로스도큐먼트 참조 (죽은 링크)');
 let refChecked = 0, dead = 0;
 const oldLayoutReq = [];    // 옛 배치(범위 통짜) 요청서 — 도메인별로 다시 뽑아야 한다
+const staleGen = [];        // 생성기가 그 뒤 자란 요청서 {path, was}
+const basisNotInReq = [];   // basis(screen-io)가 요청서에 안 실린 동작을 가리킴 {itfId, ref, doc, io}
+const fieldAliases = [];    // 계약 필드가 별칭 키를 씀 {itfId, field, alias, want, doc}
+const listNoItems = [];     // type: list 인데 원소 모양이 없음 {itfId, field, flattened, doc}
+const noOrigin = [];        // 필드의 근거 갈래 미기재 {itfId, field, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
@@ -562,6 +611,11 @@ for (const doc of loaded) {
       for (const a of (fdat.io || [])) for (const t of (a.transientSends || [])) {
         if (t && t.name && dataRefOk(t.name)) {
           report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+        }
+      }
+      for (const a of (fdat.io || [])) for (const t of (a.transientReceives || [])) {
+        if (dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 프레임 ${fr.id} 의 일회성 결과 ${t.name} 은 데이터 모델 실재 변수다 — \`receives\`로 옮기세요`);
           dead++;
         }
       }
@@ -589,6 +643,11 @@ for (const doc of loaded) {
       for (const a of (dat.io || [])) for (const t of (a.transientSends || [])) {
         if (t && t.name && dataRefOk(t.name)) {
           report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 입력 ${t.name} 은 데이터 모델 실재 변수다 — \`sends\`로 옮기세요`);
+        }
+      }
+      for (const a of (dat.io || [])) for (const t of (a.transientReceives || [])) {
+        if (dataRefOk(t.name)) {
+          report(`  ❌ ${doc.path}: 화면 ${s.id} 의 일회성 결과 ${t.name} 은 데이터 모델 실재 변수다 — \`receives\`로 옮기세요`);
           dead++;
         }
       }
@@ -647,10 +706,27 @@ for (const doc of loaded) {
         report(`  ⚠ ${doc.path} 가 낡았다 — 출처 ${f.path} 가 생성 이후 바뀜(요청서를 다시 생성하세요: --emit-interface-request)`);
       }
     }
+    // **생성기가 그 뒤 자랐나.** 요청서는 화면 + 생성기 로직의 함수인데 신선도 검사는 화면만 본다.
+    // 화면이 그대로여도 생성기가 새 칸을 실어 나르게 되면 옛 요청서는 **그 칸이 빈 채로 남는다**
+    // (실제 사고: 일회성 결과를 싣게 고쳤는데 옛 요청서는 빈 열 그대로였고 점검기는 "통과"라고 답했다).
+    if (o.generatedWith !== TOOL_VERSION) staleGen.push({ path: doc.path, was: o.generatedWith || null });
     // 옛 배치(범위 통짜) 감지. 출처가 여럿이면 화면 하나만 고쳐도 **요청서 전체가 낡음**이 되어
     // 어디가 낡았는지 알 수 없다. 도메인별로 갈라야 "이 요청서가 낡았다"가 정확해진다.
     if (Array.isArray(o.from) && (o.from.length > 1 || !o.domain)) oldLayoutReq.push(doc.path);
   }
+}
+
+// 요청서에 실제로 실린 요구 목록. **아래 basis 대조의 기준**이다.
+const reqRefs = new Set();
+// **어느 화면 설계서가 요청서로 수확됐나**(`from[].path`). 이게 대조의 게이트다 —
+// "요청서가 하나라도 있으면 판정한다"로 잡으면, **한 트랙 요청서만 가진 리포**(사용자 앱 요청서는 있는데
+// 백오피스 것은 없는 사본 등)에서 그 트랙 전체가 통째로 위반으로 뜬다. 수확된 적 없는 화면 문서의 동작은
+// **아직 요청서가 없는 것**이지 근거가 틀린 것이 아니다.
+const harvested = new Set();
+for (const doc of loaded) for (const o of doc.blocks) {
+  if (o.__parseError || !Array.isArray(o.requests)) continue;
+  for (const r of o.requests) if (r.ref) reqRefs.add(r.ref);
+  for (const f of (o.from || [])) if (f.path) harvested.add(f.path);
 }
 
 // 백엔드 참조: 인터페이스가 가리키는 것들이 실재하나 + 근거(basis) 규칙
@@ -660,6 +736,48 @@ for (const doc of loaded) {
     for (const i of (o.interfaces || [])) {
       for (const st of [...(i.reads || []), ...(i.writes || [])]) {
         refChecked++; if (!be.store.has(st)) { report(`  ❌ ${doc.path}: ${i.id} 의 저장소 ${st} → backend.stores에 없음`); dead++; }
+      }
+      // 같은 뜻의 별칭 키를 집계한다(표준: 허용값 `values` · 필수 여부 `required`).
+      const ALIAS = { enum: 'values', optional: 'required' };
+      for (const side of ['request', 'response']) {
+        const fields = (i[side] || {}).fields || [];
+        // 이름이 `x[].y`·`x.y` 꼴이면 `x`를 **펼쳐 적은 것**이다. 그런 형제가 있으면 고칠 자리가 다르다
+        // (원소 모양을 지어내는 것이 아니라 **형제를 `items.fields`로 모으는** 일이다).
+        const flatParents = new Set();
+        for (const fl of fields) {
+          const m = /^([^.[\]]+)(?:\[\])?\./.exec(String(fl.name || ''));
+          if (m) flatParents.add(m[1]);
+        }
+        for (const fl of fields) {
+          for (const [alias, want] of Object.entries(ALIAS)) {
+            if (alias in fl) fieldAliases.push({ itfId: i.id, field: `${side}.${fl.name}`, alias, want, doc: doc.path });
+          }
+          const bare = String(fl.name || '').replace(/\[\]$/, '');
+          // **목록인데 원소 모양이 없다.** `type: "list"`에서 멈추면 받는 쪽은 원소가 무엇인지 모른다
+          // (실측: 객체 배열을 보냈는데 서버는 문자열 배열을 기다려 422 — 하루 소요).
+          if (fl.type === 'list' && !fl.items) {
+            listNoItems.push({ itfId: i.id, field: `${side}.${fl.name}`, flattened: flatParents.has(bare), doc: doc.path });
+          }
+          // **이 값이 어디서 오는지**가 셋 중 하나로 적혀 있나(저장 · 파생 · 일회성).
+          const origins = ['dataModel', 'derivedFrom', 'transient'].filter((k) => fl[k] != null && fl[k] !== false);
+          if (origins.length > 1) {
+            report(`  ❌ ${doc.path}: ${i.id} 의 ${side}.${fl.name} 에 근거 갈래가 둘(${origins.join(' + ')}) — 하나만 적습니다`);
+            dead++;
+          } else if (origins.length === 0 && !flatParents.has(bare) && !fl.items) {
+            // `items`로 원소 모양을 적은 **목록 컨테이너**는 제외한다 — 값의 근거는 원소 필드가 지고,
+            // 컨테이너 자신은 담는 그릇일 뿐이다. 여기서 근거를 요구하면 **제대로 적은 문서가 벌을 받는다**
+            // (도그푸드에서 잡힌 오탐. 보고된 "컨테이너 45건"이 같은 갈래다).
+            noOrigin.push({ itfId: i.id, field: `${side}.${fl.name}`, doc: doc.path });
+          }
+          // 파생은 **무엇으로부터 왔는지**가 등기부에 실재해야 한다.
+          for (const src of ((fl.derivedFrom || {}).from || [])) {
+            refChecked++;
+            if (!dataRefOk(src)) {
+              report(`  ❌ ${doc.path}: ${i.id} 의 ${side}.${fl.name} 이 파생된 출처 ${src} → 데이터 모델에 없음`);
+              dead++;
+            }
+          }
+        }
       }
       const mode = i.auth && i.auth.mode;
       if (mode && be.authMode.size) { refChecked++; if (!be.authMode.has(mode)) { report(`  ❌ ${doc.path}: ${i.id} 의 auth.mode ${mode} → backend.system의 authModes에 없음`); dead++; } }
@@ -674,12 +792,180 @@ for (const doc of loaded) {
 for (const b of beBasis) {
   if (b.kind === 'screen-io') {
     if (!b.ref || b.ref.includes('#')) continue;              // 합성 참조(id 없는 옛 문서)는 대조 불가 — 아래에서 집계
-    refChecked++; if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; }
+    refChecked++;
+    if (!ioById.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → 화면 동작(data.io[].id)에 없음`); dead++; continue; }
+    // **화면 동작에 실재한다고 근거가 맞는 것은 아니다.** 요청서에 실리지 않은 동작을 근거로 들면
+    // 요구 → 계약의 흐름을 타지 않은 인터페이스가 된다(실측: 요청이 이슈로 와서 근거 칸을 채우려고
+    // 엉뚱한 동작 id를 갖다 붙였고, id가 실재하니 통과했다).
+    // **고칠 자리가 둘로 갈리므로 갈래를 판정해 안내한다** — 안 그러면 엉뚱한 곳을 고친다.
+    const io = ioById.get(b.ref);
+    if (io && harvested.has(io.doc) && !reqRefs.has(b.ref)) basisNotInReq.push({ ...b, io });
   } else if (b.kind === 'policy') {
     refChecked++; if (!reg.pol.has(b.ref)) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 ${b.ref} → policy.rules에 없음`); dead++; }
   } else if (b.kind === 'ops' || b.kind === 'legacy') {
     // 등기부가 없는 갈래다 — 사유가 없으면 "개발자 요구"가 아무 인터페이스나 정당화하는 뒷문이 된다.
     if (!b.why || !String(b.why).trim()) { report(`  ❌ ${b.doc}: ${b.itfId} 의 근거 "${b.ref}"(${b.kind})에 why 없음 — 등기부 없는 갈래는 사유 필수`); dead++; }
+  }
+}
+
+// 근거는 실재하는데 **요청서에는 없는** 동작 — 갈래를 갈라 안내한다.
+// 한 갈래로 뭉쳐 "ops를 쓰라"고만 하면 **엉뚱한 곳을 고치게 된다**(실측 4건은 전부 화면 설계서가 고칠 자리였다:
+// 서버를 거치는 동작인데 `target: client`로 적혀 있어 요청서 생성에서 빠졌고, 그래서 담기·빼기가 저장되지 않았다).
+if (basisNotInReq.length) {
+  const bucket = { screen: [], stale: [], untargeted: [] };
+  for (const x of basisNotInReq) {
+    const t = x.io && x.io.target ? String(x.io.target).split('.')[0] : null;
+    if (!t) bucket.untargeted.push(x);
+    else if (t === 'server') bucket.stale.push(x);
+    else bucket.screen.push(x);                              // client·local — 화면 설계서가 고칠 자리
+  }
+  report(`\n  ⚠ 요청서에 없는 동작을 근거로 든 인터페이스 ${basisNotInReq.length}건 — 요구 → 계약 흐름을 안 탔다`);
+  const show = (list, head, ...how) => {
+    if (!list.length) return;
+    report(`     ${head} (${list.length}건)`);
+    for (const x of list.slice(0, CAP(list.length))) report(`       · ${x.itfId} → ${x.ref}`);
+    if (!verbose && list.length > 5) report(`       · 외 ${list.length - 5}건 (--verbose로 전부)`);
+    for (const line of how) report(`       ${line}`);
+  };
+  show(bucket.screen, '**화면 설계서를 고치세요** — 그 동작이 `client`/`local`로 적혀 있어 요청서에서 빠졌습니다',
+    '→ 서버를 거치는 동작이면 `target: server`로 바로잡고 요청서를 다시 뽑으세요.',
+    '→ **`ops`로 바꾸지 마세요.** 화면에 있는 동작이라 근거 갈래는 `screen-io`가 맞습니다.');
+  show(bucket.stale, '**요청서를 다시 뽑으세요** — 동작은 `server`인데 요청서에 안 실렸습니다',
+    '→ 화면을 고친 뒤 재생성을 안 돌렸을 때 이렇게 됩니다(`--emit-interface-request`).');
+  show(bucket.untargeted, '**`target`을 먼저 판정하세요** — 미분류라 요청서에 실릴지가 정해지지 않았습니다');
+  report('     ※ **화면 자체가 없는 요구**(배치·웹훅·정산·운영)라면 근거 갈래가 다릅니다 —');
+  report('        `{"kind": "ops", "ref": "…", "why": "…"}`로 적으세요(`why` 필수).');
+}
+
+// 생성기가 자란 뒤로 다시 안 뽑은 요청서. **화면이 그대로라 신선도 검사가 못 보는 자리**다.
+if (staleGen.length) {
+  report(`\n  ⚠ 생성기가 자란 뒤로 다시 안 뽑은 요청서 ${staleGen.length}건 — 새 칸이 빈 채로 남아 있을 수 있습니다`);
+  for (const x of staleGen.slice(0, CAP(staleGen.length))) {
+    report(`     · ${x.path} (뽑은 판 ${x.was || '표시 없음'} → 지금 ${TOOL_VERSION})`);
+  }
+  if (!verbose && staleGen.length > 5) report(`     · 외 ${staleGen.length - 5}건 (--verbose로 전부)`);
+  report('     → `--emit-interface-request` 로 다시 뽑으세요. 화면은 그대로라 다른 검사는 아무 말도 하지 않습니다.');
+}
+
+// 목록인데 **원소 하나의 모양**이 없나. 고칠 자리가 둘로 갈린다 — 형제를 모으는 일이냐, 새로 적는 일이냐.
+if (listNoItems.length) {
+  const flat = listNoItems.filter((x) => x.flattened);
+  const bare = listNoItems.filter((x) => !x.flattened);
+  report(`\n  ⚠ 목록인데 항목 모양이 없는 계약 필드 ${listNoItems.length}건`);
+  report('     받는 쪽은 `type: "list"`만 보고 원소가 무엇인지 알 수 없습니다 —');
+  report('     실측 사고: 객체 배열을 보냈는데 서버는 문자열 배열을 기다려 422가 났습니다.');
+  const show = (list, head, how) => {
+    if (!list.length) return;
+    report(`     ${head} (${list.length}건)`);
+    for (const x of list.slice(0, CAP(list.length))) report(`       · ${x.itfId} 의 ${x.field}`);
+    if (!verbose && list.length > 5) report(`       · 외 ${list.length - 5}건 (--verbose로 전부)`);
+    report(`       ${how}`);
+  };
+  show(flat, '**형제 필드를 모으세요** — 원소의 필드를 `이름[].속성`으로 펼쳐 적으셨습니다',
+    '→ 형제 배열이라 스키마가 못 봅니다. `items.fields`로 모으면 원소 모양이 한자리에 섭니다.');
+  show(bare, '**원소 모양을 적으세요** — 어디에도 원소 정보가 없습니다',
+    '→ `items: { "type": "…", "desc": "…" }`. 원소가 객체면 `fields`, 열거형이면 `values`를 함께.');
+}
+
+// 값이 **어디서 오는지**가 안 적힌 필드. 저장·파생·일회성 셋 중 하나여야 한다.
+if (noOrigin.length) {
+  report(`\n  ⚠ 근거 갈래가 안 적힌 계약 필드 ${noOrigin.length}건 — 저장된 값인지, 파생인지, 일회성인지 모릅니다`);
+  for (const x of noOrigin.slice(0, CAP(noOrigin.length))) report(`     · ${x.itfId} 의 ${x.field}`);
+  if (!verbose && noOrigin.length > 5) report(`     · 외 ${noOrigin.length - 5}건 (--verbose로 전부)`);
+  report('     → 저장된 값이면 `dataModel` · 계산·가공해 만들면 `derivedFrom` · 저장 안 하면 `transient: true`.');
+  report('     ※ **반대편이 더 위험합니다** — `dataModel`이 붙었는데 사실은 **파생**인 것은 기계가 못 잡습니다');
+  report('        (이름이 실재하니 통과). 끝 네 자리 발췌·건수·결합 같은 값이 원본 개념에 걸려 있으면,');
+  report('        저장 설계를 읽는 쪽이 **원본을 저장한다고 오해합니다.** 풀 리뷰의 미러 충실도에서 봅니다.');
+}
+
+// 계약 필드가 **같은 뜻을 다른 이름으로** 적고 있나. 스키마가 한쪽만 선언해 두어 나머지가 조용히 통과했다
+// (실측: 허용값 `values` 50 · `enum` 26 / 필수 `required` 295 · `optional` 2).
+// 소비자가 표준 이름만 읽으면 **별칭으로 적힌 것은 그 값이 없는 필드로 보인다.**
+// 지금 막지 않고 **집계만** 한다 — `additionalProperties: false`로 즉시 잠그면 990필드 문서가 그날로 실패한다.
+if (fieldAliases.length) {
+  const byAlias = new Map();
+  for (const x of fieldAliases) byAlias.set(x.alias, (byAlias.get(x.alias) || 0) + 1);
+  report(`\n  ⚠ 같은 뜻을 다른 이름으로 적은 계약 필드 ${fieldAliases.length}건 — **이관 필요**`);
+  report(`     ${[...byAlias.entries()].map(([k, v]) => `${k} ${v}건`).join(' · ')}`);
+  for (const x of fieldAliases.slice(0, CAP(fieldAliases.length))) {
+    report(`     · ${x.itfId} 의 ${x.field}: \`${x.alias}\` → \`${x.want}\``);
+  }
+  if (!verbose && fieldAliases.length > 5) report(`     · 외 ${fieldAliases.length - 5}건 (--verbose로 전부)`);
+  report('     → 표준 이름은 **허용값 `values` · 필수 여부 `required`**입니다.');
+  report('        소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 **그 값이 없는 필드로 보입니다.**');
+}
+
+// ── 인터페이스 항목 단위 개정 ──────────────────────────────────────────────
+// 계약 문서 하나에 인터페이스가 20개 넘게 살면, **문서 단위 `revision`으로는 소비자가 "내가 맞춘 판이
+// 아직 유효한가"를 물을 수 없다.** 그렇다고 사람에게 항목마다 적으라고 하면 빈다(실측: 130건 중 117건이
+// 근거를 한 줄만 적었고, 그걸 근거로 만든 검사의 "미해결 9건"이 전부 오탐이었다).
+// 그래서 **스크립트가 계약 내용의 해시로 계산**하고, 사람은 **더 올릴 수만** 있다.
+const REV_FILE = 'interface-revisions.json';
+const revPath = path.join(root, REV_FILE);
+// 개정 계산에 넣는 것은 **계약 내용뿐**이다. `basis`(근거)·`notes`·산문 위치는 바뀌어도 계약이 바뀐 게 아니다.
+const CONTRACT_KEYS = ['id', 'transport', 'binding', 'method', 'path', 'auth', 'request', 'response', 'errors', 'async', 'idempotency'];
+const canon = (v) => {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === 'object') {
+    const o = {};
+    for (const k of Object.keys(v).sort()) o[k] = canon(v[k]);
+    return o;
+  }
+  return v;
+};
+const itfHash = (i) => {
+  const picked = {};
+  for (const k of CONTRACT_KEYS) if (i[k] !== undefined) picked[k] = canon(i[k]);
+  return 'sha256:' + crypto.createHash('sha256').update(JSON.stringify(picked)).digest('hex');
+};
+const liveItf = [];
+for (const doc of loaded) for (const o of doc.blocks) {
+  if (o.__parseError) continue;
+  for (const i of (o.interfaces || [])) liveItf.push({ id: i.id, hash: itfHash(i), stated: i.revision ?? null, doc: doc.path });
+}
+if (liveItf.length) {
+  let snap = null;
+  try { snap = JSON.parse(fs.readFileSync(revPath, 'utf8')); } catch { snap = null; }
+  const prev = (snap && snap.interfaces) || {};
+  const next = {};
+  const bumped = [], fresh = [], lowered = [], raised = [];
+  for (const x of liveItf) {
+    const was = prev[x.id];
+    // 계산 규칙: 없던 것 → 1 / 계약이 그대로 → 유지 / 계약이 바뀜 → +1.
+    // **옛 세트를 채울 때 과거 이력을 지어내지 않는다** — 몇 번 고쳐졌든 지금을 1세대로 본다.
+    let rev = !was ? 1 : (was.hash === x.hash ? was.revision : was.revision + 1);
+    if (!was) fresh.push(x); else if (was.hash !== x.hash) bumped.push({ ...x, from: was.revision, to: rev });
+    // 사람은 **더 올릴 수만** 있다 — 기계가 못 보는 변경(필드는 그대로인데 뜻이 바뀐 것)의 통로다.
+    if (x.stated != null) {
+      if (x.stated > rev) { raised.push({ ...x, to: x.stated }); rev = x.stated; }
+      else if (x.stated < rev) lowered.push({ ...x, computed: rev });
+    }
+    next[x.id] = { revision: rev, hash: x.hash };
+  }
+  for (const x of lowered) {
+    report(`  ❌ ${x.doc}: ${x.id} 의 revision ${x.stated} 가 계산값 ${x.computed} 보다 작습니다 — 개정은 내려가지 않습니다`);
+    dead++;
+  }
+  const drift = bumped.length + fresh.length;
+  if (syncRev) {
+    const out = { generatedBy: 'check-docs', note: '인터페이스 항목 단위 개정 번호. 스크립트가 계산한다 — 손으로 고치지 말고, 올릴 일이 있으면 계약 문서의 interfaces[].revision 에 적으세요.', interfaces: next };
+    fs.writeFileSync(revPath, JSON.stringify(out, null, 2) + '\n');
+    report(`\n  ✅ ${REV_FILE} 기록 — 인터페이스 ${liveItf.length}건 (새로 ${fresh.length} · 개정 ${bumped.length} · 사람이 올림 ${raised.length})`);
+  } else if (!snap) {
+    report(`\n  ⚠ 항목 단위 개정 기록이 없습니다(${REV_FILE}) — 인터페이스 ${liveItf.length}건`);
+    report('     소비자가 "내가 맞춘 판이 아직 유효한가"를 물을 자리가 없습니다.');
+    report('     → `--sync-revisions` 를 한 번 돌리면 전부 **개정 1**로 시작합니다.');
+    report('        (과거 이력은 지어내지 않습니다 — 몇 번 고쳐졌든 지금을 1세대로 봅니다.)');
+    if (checkRev) problems.push('revision');
+  } else if (drift) {
+    report(`\n  ⚠ 개정 번호가 지금 계약과 어긋납니다 — 기록되지 않은 변경 ${drift}건`);
+    for (const x of bumped.slice(0, CAP(bumped.length))) report(`     · ${x.id} — 계약이 바뀌었습니다 (개정 ${x.from} → ${x.to})`);
+    for (const x of fresh.slice(0, CAP(fresh.length))) report(`     · ${x.id} — 기록에 없는 새 인터페이스 (개정 1)`);
+    if (!verbose && drift > 5) report(`     · 외 ${drift - 5}건 (--verbose로 전부)`);
+    report('     → `--sync-revisions` 로 기록을 갱신하세요. 소비자는 이 파일로 판이 유효한지 봅니다.');
+    if (checkRev) problems.push('revision');
+  } else {
+    report(`\n  ✅ 항목 단위 개정 ${liveItf.length}건 — 기록과 일치` + (raised.length ? ` (사람이 올린 것 ${raised.length}건 포함)` : ''));
   }
 }
 
@@ -766,6 +1052,7 @@ if (emitNeeds) {
       id: x.id, screen: x.screen, action: x.action, target: x.target,
       ui: x.ui ?? null, auth: x.auth ?? null, sends: x.sends ?? [], receives: x.receives ?? [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
+      ...(x.transientReceives && x.transientReceives.length ? { transientReceives: x.transientReceives } : {}),
       policies: x.policies ?? [], semantics: x.semantics ?? null,
       ...(x.frame ? { frame: x.frame, appliesTo: x.appliesTo ?? null } : {}),
       doc: x.doc, coveredBy: covered.get(x.id) ?? [],
@@ -836,6 +1123,7 @@ if (emitReq) {
   });
   const block = {
     generatedAt: new Date().toISOString().slice(0, 10),
+    generatedWith: TOOL_VERSION,
     scope: reqScope, domain: reqDomain,
     ...(reqTransport ? { preferredTransport: reqTransport, bindingSlots: SLOTS[reqTransport] || [] } : {}),
     from: fromDocs,
@@ -846,6 +1134,7 @@ if (emitReq) {
       sends: x.sends || [],
       ...(x.transientSends && x.transientSends.length ? { transientSends: x.transientSends } : {}),
       receives: x.receives || [],
+      ...(x.transientReceives && x.transientReceives.length ? { transientReceives: x.transientReceives } : {}),
       ...(x.policies && x.policies.length ? { policies: x.policies } : {}),
       ...(x.semantics ? { semantics: x.semantics } : {}),
       // 프레임 동작은 **한 화면이 아니라 걸리는 모든 화면에서** 일어난다. 이 표시가 없으면 백엔드가
@@ -877,14 +1166,14 @@ if (emitReq) {
          '> 화면 수만큼 불린다고 보고 호출 빈도·캐시·세션 저장소를 정하세요. `appliesTo`에 예외 화면이 있으면',
          '> 그 화면에서는 일어나지 않습니다(대개 로그인 화면 — 안 빼면 "로그인하려면 세션이 있어야 한다"가 됩니다).', '']
       : []),
-    '| 동작 | 화면/프레임 | 인증 | 보냄 | 일회성 입력 | 받음 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|---|',
+    '| 동작 | 화면/프레임 | 인증 | 보냄 | 일회성 입력 | 받음 | 일회성 결과 | 정책 | 행동 규약 |', '|---|---|---|---|---|---|---|---|---|',
     ...block.requests.map((r) => {
       // 인증 요건은 **백엔드가 계약(auth.mode·checks)을 정하는 근거**다. 미분류를 빈칸으로 두면
       // "인증 불필요"로 읽히므로 **미분류라고 적는다**.
       const au = !r.auth ? '**미분류**'
         : (r.auth.required ? `필요${(r.auth.roles || []).length ? ` (${r.auth.roles.join('·')})` : ''}` : '불필요')
           + (r.auth.note ? ` — ${r.auth.note}` : '');
-      return `| \`${r.ref}\` | ${r.screen} | ${au} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`;
+      return `| \`${r.ref}\` | ${r.screen} | ${au} | ${(r.sends || []).join(', ') || '—'} | ${(r.transientSends || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.receives || []).join(', ') || '—'} | ${(r.transientReceives || []).map((t) => `${t.name}(${t.desc})`).join(', ') || '—'} | ${(r.policies || []).join(', ') || '—'} | ${r.semantics || '—'} |`;
     }),
     '',
     ...(() => {
@@ -919,6 +1208,38 @@ if (emitReq) {
     })(),
     '```json interface.requests', JSON.stringify(block, null, 2), '```', '',
   ].join('\n');
+  // **재생성은 손으로 적은 것을 지운다.** 요청서는 파생물이라 통째로 다시 만들어지는데, 계약 문서는
+  // 손질하는 곳이라 성질이 반대다 — 같은 규약으로 덮으면 **요청서 쪽에서만 조용히 샌다**(실사용 제보:
+  // 스키마에 없는 키를 손으로 넣었는데 다음 생성 때 사라졌다). 지우기 전에 **무엇이 지워지는지 알린다.**
+  const outPath = path.join(root, 'interface-requests', reqScope, `interface-request-${reqScope}-${reqDomain}.md`);
+  if (fs.existsSync(outPath)) {
+    try {
+      const oldTxt = fs.readFileSync(outPath, 'utf8');
+      const m = /```json\s+interface\.requests\n([\s\S]*?)```/.exec(oldTxt);
+      const oldBlock = m ? JSON.parse(m[1]) : null;
+      if (oldBlock && Array.isArray(oldBlock.requests)) {
+        // 생성기가 **낼 수 있는 키**의 집합. 여기 없는 키가 옛 파일에 있으면 사람이 손으로 넣은 것이다.
+        const emitted = new Set();
+        for (const r of block.requests) for (const k of Object.keys(r)) emitted.add(k);
+        for (const k of ['ref', 'screen', 'action', 'target', 'ui', 'auth', 'sends', 'transientSends',
+                         'receives', 'transientReceives', 'policies', 'semantics', 'frame', 'appliesTo']) emitted.add(k);
+        const lost = [];
+        const byRef = new Map(block.requests.map((r) => [r.ref, r]));
+        for (const r of oldBlock.requests) {
+          for (const k of Object.keys(r)) if (!emitted.has(k)) lost.push({ ref: r.ref, key: k });
+          if (!byRef.has(r.ref)) lost.push({ ref: r.ref, key: '(요구 자체)' });
+        }
+        if (lost.length) {
+          console.error(`⚠ 재생성이 지웁니다 — 지금 파일에만 있는 것 ${lost.length}건 (${outPath.replace(root + '/', '')})`);
+          for (const x of lost.slice(0, CAP(lost.length))) console.error(`   · ${x.ref} 의 ${x.key}`);
+          if (!verbose && lost.length > 5) console.error(`   · 외 ${lost.length - 5}건 (--verbose로 전부)`);
+          console.error('   → 요청서는 **파생물**이라 손으로 적으면 다음 생성 때 사라집니다.');
+          console.error('      남겨야 할 내용이면 **원본(화면 설계서)에 적고** 다시 뽑으세요.');
+          console.error('      "(요구 자체)"는 화면에서 그 동작이 없어졌거나 `target`이 서버가 아니게 된 것입니다.');
+        }
+      }
+    } catch { /* 옛 파일을 못 읽으면 알림만 못 낼 뿐, 생성은 막지 않는다 */ }
+  }
   console.log(out);
   process.exit(0);
 }
@@ -1133,6 +1454,12 @@ report('\n[3] 파장 · 신선도');
       if (unknown.size) {
         report(`  ⚠ 파장 지도에 없는 문서 종류 ${unknown.size}종 — 이 문서들은 **파장 대상 밖**이다`);
         report(`     ${[...unknown.entries()].map(([t, c]) => `${t} ${c}건`).join(' · ')}`);
+        // **오타·비슷한 이름을 먼저 의심하게 한다.** 세트 표준 이름과 한 글자 차이인 경우가 실제로 있다
+        // (도그푸드에서 파일명이 `design-spec.md`라 `doc_type`도 `design-spec`으로 적었는데 정본은 `design-doc`이었다).
+        for (const t of unknown.keys()) {
+          const near = [...known].filter((k) => k !== t && (k.startsWith(t.split('-')[0] + '-') || t.startsWith(k.split('-')[0] + '-')));
+          if (near.length) report(`     · \`${t}\` — 혹시 \`${near.join('` 또는 `')}\` 인가요? (이름이 비슷합니다)`);
+        }
         report('     → 프로젝트 고유 문서면 매니페스트 항목에 `derivesFrom`(선택)으로 상류를 적어 주면 편입된다.');
         report('       세트 표준 문서인데 빠진 것이면 파장 지도(스킬 자산)를 고쳐야 한다.');
       }
@@ -1174,7 +1501,15 @@ report('\n[3] 파장 · 신선도');
           if (c.revision == null) report('     (문서에 revision을 넣으면 "결정 변경"과 "문구 수정"을 구분할 수 있다)');
         } else if (hashChanged) {
           silent++;
-          report(`  ⚠ ${up} 이 개정 번호 없이 수정됨(r${c.revision} 그대로) — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+          // **파생물에는 "개정을 올려라"라고 하지 않는다 — 할 수 없는 일이다.** 요청서는 통째로 다시
+          // 뽑히므로 사람이 개정을 매길 자리가 없고, 그래도 내용이 바뀐 건 사실이라 **하류 재검토는 필요하다**.
+          // 신호는 살리고 지시만 가른다(뭉뚱그리면 매 재생성마다 못 할 일을 시켜 경고가 무시된다).
+          if (DERIVED_TYPES.has(docTypeOf.get(up))) {
+            report(`  ⚠ ${up} 이 다시 뽑혀 바뀜 — 하류 재검토 필요: ${[...downs].join(', ')}`);
+            report('     (파생물이라 개정 번호를 사람이 올리지 않습니다 — 바뀐 요구가 계약에 반영됐는지만 보세요)');
+          } else {
+            report(`  ⚠ ${up} 이 개정 번호 없이 수정됨(r${c.revision} 그대로) — 결정이 바뀐 것이면 revision을 올리고 하류를 재검토하세요`);
+          }
         }
       }
       if (unpinned) report(`  · 리뷰 기준선에 없는 상류 ${unpinned}개(그 문서들은 신선도 판정 불가 — 다음 리뷰에서 sources에 넣으세요)`);

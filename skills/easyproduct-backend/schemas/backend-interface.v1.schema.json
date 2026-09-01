@@ -50,25 +50,30 @@
             "pattern": "^BEITF\\.(user|bo|internal)\\.[a-z][a-zA-Z0-9]*\\.[a-z][a-zA-Z0-9]*(\\.[a-z][a-zA-Z0-9]*)?$",
             "description": "인터페이스 anchor. BEITF.<scope>.<도메인>.<이름>[.<verb>]. 한 번 부여하면 바꾸지 않는다 — 다른 문서·코드가 이 ID로 참조한다."
           },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "이 **인터페이스 하나**의 개정 번호. 문서 전체의 frontmatter `revision`과 **다른 자리**다 — 계약 문서 하나에 인터페이스가 20개 넘게 살면, 문서 단위 개정으로는 소비자가 '**내가 맞춘 판이 아직 유효한가**'를 물을 수 없다. **`version`과도 다르다** — `version`은 payload 스키마의 계약 버전이라 내용이 바뀌어도 안 오른다(실제로 이 축이 뒤섞여 v1 스키마 문서에 `version: 13`이 박힌 사고가 있었다). **보통은 적지 않는다** — 점검기가 계약 내용의 해시로 계산해 `interface-revisions.json`에 기록하고, 그 파일이 정본이다. 여기 적는 것은 **사람이 더 올릴 때뿐**이다: 필드는 그대로인데 **뜻이 바뀐 경우**(기계가 못 보는 변경). 계산값보다 **작게 적으면 오류**다 — 개정은 내려가지 않는다."
+          },
           "summary": {
             "type": "string",
             "description": "이 인터페이스가 무엇을 하는지 한 줄."
           },
-          "method": {
+          "transport": {
             "enum": [
-              "GET",
-              "POST",
-              "PUT",
-              "PATCH",
-              "DELETE",
-              "HEAD",
-              "OPTIONS"
+              "rest",
+              "grpc",
+              "graphql",
+              "ws",
+              "queue",
+              "other"
             ],
-            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.method` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+            "description": "이 인터페이스가 오가는 전송 방식. 전송마다 규격의 모양이 달라 binding 에 담는다. 문서 전체가 한 전송이어도 인터페이스마다 적는다(혼합이 흔하다)."
           },
-          "path": {
-            "type": "string",
-            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.path` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          "binding": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "그 전송에 걸맞은 규격. **전송별로 담아야 할 키가 다르다** — rest: {method, path, status} · grpc: {service, rpc, requestMessage, responseMessage} · graphql: {operationType, fieldName} · ws: {channel, event} · queue: {topic, key, deliveryGuarantee}. 비워 두면 '어떻게 부르는지'가 없는 계약이 되므로 최소 1개는 필수다. (조건부 검증은 이 세트 검증기의 범위 밖이라, 전송별 필수 키는 스킬 지침이 규정하고 LLM 층이 본다.)"
           },
           "auth": {
             "type": "object",
@@ -154,19 +159,51 @@
                       "type": "string",
                       "description": "이 필드의 뜻(필수 — 이름만 담지 않는다)."
                     },
-                    "dataModel": {
-                      "type": "string",
-                      "description": "대응 데이터 모델 변수 <group> 또는 <group>.<field>. 있으면 데이터 모델에 실재해야 한다."
-                    },
                     "required": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "이 필드가 필수인가. **표준 이름이다.** 같은 뜻을 `enum`(허용값)·`optional`(필수 여부)로 적지 않는다 — 스키마가 한쪽만 선언해 두면 나머지가 조용히 통과하고, **소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 그 값이 없는 필드로 보인다**(실측: 허용값 `values` 50 · `enum` 26). 점검기가 별칭을 '이관 필요'로 집계한다."
                     },
                     "values": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "description": "값이 정해진 경우 허용 값."
+                      "description": "값이 정해진 경우 허용 값. **표준 이름이다.** 같은 뜻을 `enum`(허용값)·`optional`(필수 여부)로 적지 않는다 — 스키마가 한쪽만 선언해 두면 나머지가 조용히 통과하고, **소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 그 값이 없는 필드로 보인다**(실측: 허용값 `values` 50 · `enum` 26). 점검기가 별칭을 '이관 필요'로 집계한다."
+                    },
+                    "items": {
+                      "$ref": "#/$defs/itemShape",
+                      "description": "`type: \"list\"`일 때 **원소 하나의 모양**. 목록인데 이게 없으면 점검기가 '항목 모양 미기재'로 집계한다."
+                    },
+                    "dataModel": {
+                      "type": "string",
+                      "description": "대응 데이터 모델 변수 <group> 또는 <group>.<field>. 있으면 데이터 모델에 실재해야 한다. **필드가 어디서 오는지는 셋 중 하나다** — ⓐ 저장된 값이면 `dataModel` ⓑ 저장된 값에서 **계산·가공**해 만들면 `derivedFrom` ⓒ 저장하지 않는 일회성 값이면 `transient: true`. **둘을 동시에 적지 않는다.** 셋 다 없으면 점검기가 '근거 갈래 미기재'로 집계한다 — 실측 990필드 중 317건(32%)이 `dataModel` 없이 비어 있었고, **더 위험한 반대편으로 `dataModel`이 붙은 673건 중 25건이 사실은 파생**이었다(끝 네 자리만 남긴 값이 결제수단 개념에 그대로 걸려 있으면, 저장 설계를 읽는 쪽이 원본을 저장한다고 오해한다)."
+                    },
+                    "derivedFrom": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "how"
+                      ],
+                      "additionalProperties": false,
+                      "description": "이 값이 **저장된 값에서 계산·가공돼** 나온다는 뜻. 원본을 그대로 담는 것이 아니므로 `dataModel`을 쓰지 않는다. **무엇으로부터 왔는지가 남아야** 저장 설계를 읽는 쪽이 원본과 파생을 구별한다.",
+                      "properties": {
+                        "from": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "이 값을 만드는 데 쓰인 데이터 모델 변수 전부(`<group>.<field>`). **최소 1개 · 등기부 대조를 받는다.** 비면 '파생이다'라는 말만 남고 무엇에서 왔는지가 사라져 빈 껍데기가 된다."
+                        },
+                        "how": {
+                          "type": "string",
+                          "description": "어떻게 만드는지 **한 줄**(예: '끝 네 자리만 남긴다' · '건수를 센다' · '표시용 문자열로 결합한다'). 연산 종류를 정해진 목록으로 고정하지 않는다 — 실사용 표본이 아직 얇다."
+                        }
+                      }
+                    },
+                    "transient": {
+                      "type": "boolean",
+                      "description": "**저장하지 않는 일회성 값**이면 `true`(검색어·페이지 번호·정렬 기준 등). 데이터 모델에 등재할 값이 아니라는 뜻이라, 등재 누락으로 집계되지 않는다. 화면 쪽 `transientSends`·`transientReceives`와 같은 갈래다."
                     }
                   }
                 }
@@ -223,9 +260,51 @@
                       "type": "string",
                       "description": "이 필드의 뜻(필수)."
                     },
+                    "required": {
+                      "type": "boolean",
+                      "description": "이 필드가 **항상 오는가**. 조건부로 빠질 수 있으면 `false`. **표준 이름이다.** 같은 뜻을 `enum`(허용값)·`optional`(필수 여부)로 적지 않는다 — 스키마가 한쪽만 선언해 두면 나머지가 조용히 통과하고, **소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 그 값이 없는 필드로 보인다**(실측: 허용값 `values` 50 · `enum` 26). 점검기가 별칭을 '이관 필요'로 집계한다."
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "허용값 목록(열거형일 때). 데이터 모델의 열거값을 그대로 쓰되, 계약에서만 좁아지면 그 사실을 `desc`에 밝힌다. **표준 이름이다.** 같은 뜻을 `enum`(허용값)·`optional`(필수 여부)로 적지 않는다 — 스키마가 한쪽만 선언해 두면 나머지가 조용히 통과하고, **소비자가 표준 이름만 읽으면 별칭으로 적힌 것은 그 값이 없는 필드로 보인다**(실측: 허용값 `values` 50 · `enum` 26). 점검기가 별칭을 '이관 필요'로 집계한다."
+                    },
+                    "items": {
+                      "$ref": "#/$defs/itemShape",
+                      "description": "`type: \"list\"`일 때 **원소 하나의 모양**. 목록인데 이게 없으면 점검기가 '항목 모양 미기재'로 집계한다."
+                    },
                     "dataModel": {
                       "type": "string",
-                      "description": "대응 데이터 모델 변수. 있으면 실재해야 한다."
+                      "description": "대응 데이터 모델 변수. 있으면 실재해야 한다. **필드가 어디서 오는지는 셋 중 하나다** — ⓐ 저장된 값이면 `dataModel` ⓑ 저장된 값에서 **계산·가공**해 만들면 `derivedFrom` ⓒ 저장하지 않는 일회성 값이면 `transient: true`. **둘을 동시에 적지 않는다.** 셋 다 없으면 점검기가 '근거 갈래 미기재'로 집계한다 — 실측 990필드 중 317건(32%)이 `dataModel` 없이 비어 있었고, **더 위험한 반대편으로 `dataModel`이 붙은 673건 중 25건이 사실은 파생**이었다(끝 네 자리만 남긴 값이 결제수단 개념에 그대로 걸려 있으면, 저장 설계를 읽는 쪽이 원본을 저장한다고 오해한다)."
+                    },
+                    "derivedFrom": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "how"
+                      ],
+                      "additionalProperties": false,
+                      "description": "이 값이 **저장된 값에서 계산·가공돼** 나온다는 뜻. 원본을 그대로 담는 것이 아니므로 `dataModel`을 쓰지 않는다. **무엇으로부터 왔는지가 남아야** 저장 설계를 읽는 쪽이 원본과 파생을 구별한다.",
+                      "properties": {
+                        "from": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "이 값을 만드는 데 쓰인 데이터 모델 변수 전부(`<group>.<field>`). **최소 1개 · 등기부 대조를 받는다.** 비면 '파생이다'라는 말만 남고 무엇에서 왔는지가 사라져 빈 껍데기가 된다."
+                        },
+                        "how": {
+                          "type": "string",
+                          "description": "어떻게 만드는지 **한 줄**(예: '끝 네 자리만 남긴다' · '건수를 센다' · '표시용 문자열로 결합한다'). 연산 종류를 정해진 목록으로 고정하지 않는다 — 실사용 표본이 아직 얇다."
+                        }
+                      }
+                    },
+                    "transient": {
+                      "type": "boolean",
+                      "description": "**저장하지 않는 일회성 값**이면 `true`(검색어·페이지 번호·정렬 기준 등). 데이터 모델에 등재할 값이 아니라는 뜻이라, 등재 누락으로 집계되지 않는다. 화면 쪽 `transientSends`·`transientReceives`와 같은 갈래다."
                     }
                   }
                 }
@@ -276,57 +355,10 @@
             },
             "description": "이 인터페이스가 쓰는 저장소 BESTORE.*. 실재해야 한다."
           },
-          "async": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "이 인터페이스가 오래 걸리는 일을 비동기로 넘길 때의 계약. 동기면 생략.",
-            "properties": {
-              "kind": {
-                "enum": [
-                  "job",
-                  "stream",
-                  "webhook"
-                ],
-                "description": "비동기 방식."
-              },
-              "desc": {
-                "type": "string",
-                "description": "무엇을 넘기고 결과를 어떻게 받는지."
-              },
-              "statusEndpoint": {
-                "type": "string",
-                "description": "진행·결과를 조회하는 인터페이스 BEITF.*."
-              }
-            }
-          },
-          "idempotency": {
-            "type": "string",
-            "description": "같은 요청이 두 번 와도 안전한가 — 안전하다면 무엇으로 판정하는지(키·자연키). 쓰기 인터페이스면 반드시 적는다."
-          },
-          "notes": {
-            "type": "string",
-            "description": "그 밖에 구현자가 알아야 할 것(근거 문서와 다르게 확정한 이유 등)."
-          },
-          "transport": {
-            "enum": [
-              "rest",
-              "grpc",
-              "graphql",
-              "ws",
-              "queue",
-              "other"
-            ],
-            "description": "이 인터페이스가 오가는 전송 방식. 전송마다 규격의 모양이 달라 binding 에 담는다. 문서 전체가 한 전송이어도 인터페이스마다 적는다(혼합이 흔하다)."
-          },
-          "binding": {
-            "type": "object",
-            "minProperties": 1,
-            "description": "그 전송에 걸맞은 규격. **전송별로 담아야 할 키가 다르다** — rest: {method, path, status} · grpc: {service, rpc, requestMessage, responseMessage} · graphql: {operationType, fieldName} · ws: {channel, event} · queue: {topic, key, deliveryGuarantee}. 비워 두면 '어떻게 부르는지'가 없는 계약이 되므로 최소 1개는 필수다. (조건부 검증은 이 세트 검증기의 범위 밖이라, 전송별 필수 키는 스킬 지침이 규정하고 LLM 층이 본다.)"
-          },
           "basis": {
             "type": "array",
             "minItems": 1,
-            "description": "이 인터페이스가 존재하는 **근거**. 여러 개일 수 있다(여러 화면이 같은 인터페이스를 쓰거나, 화면과 정책이 함께 근거일 때). 비면 '왜 있는지 아무도 모르는 인터페이스'가 되므로 최소 1개는 필수다.",
+            "description": "이 인터페이스가 존재하는 **근거**. 여러 개일 수 있다(여러 화면이 같은 인터페이스를 쓰거나, 화면과 정책이 함께 근거일 때). 비면 '왜 있는지 아무도 모르는 인터페이스'가 되므로 최소 1개는 필수다. **갈래를 고르는 법:** 화면 설계서의 동작에서 온 요구면 `screen-io` — 그 동작이 **인터페이스 요청서에 실려 있어야** 한다. 실려 있지 않으면 근거로 삼기 전에 화면 쪽을 먼저 본다: `target`이 `client`/`local`이면 **화면 설계서를 고칠 자리**이고, `server`인데 안 실렸으면 **요청서를 다시 뽑을 자리**다. **화면 자체가 없는 요구**(배치·웹훅·정산·운영·이슈로 들어온 서버 자체 판단)는 **`ops`**이고 `why`가 필수다 — 자리가 없다고 엉뚱한 화면 동작 id를 갖다 붙이지 않는다(실측 사고: 그렇게 붙인 4건이 전부 진짜 결함이었다).",
             "items": {
               "type": "object",
               "required": [
@@ -355,7 +387,156 @@
                 }
               }
             }
+          },
+          "notes": {
+            "type": "string",
+            "description": "그 밖에 구현자가 알아야 할 것(근거 문서와 다르게 확정한 이유 등)."
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.method` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "path": {
+            "type": "string",
+            "description": "**폐기(deprecated)** — rest 전송의 규격이므로 `binding.path` 로 옮긴다. 옛 문서 호환용으로만 남아 있다."
+          },
+          "async": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "이 인터페이스가 오래 걸리는 일을 비동기로 넘길 때의 계약. 동기면 생략.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "job",
+                  "stream",
+                  "webhook"
+                ],
+                "description": "비동기 방식."
+              },
+              "desc": {
+                "type": "string",
+                "description": "무엇을 넘기고 결과를 어떻게 받는지."
+              },
+              "statusEndpoint": {
+                "type": "string",
+                "description": "진행·결과를 조회하는 인터페이스 BEITF.*."
+              }
+            }
+          },
+          "idempotency": {
+            "type": "string",
+            "description": "같은 요청이 두 번 와도 안전한가 — 안전하다면 무엇으로 판정하는지(키·자연키). 쓰기 인터페이스면 반드시 적는다."
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "itemShape": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "**목록 원소 하나의 모양.** `type: \"list\"`에서 멈추면 받는 쪽은 원소가 무엇인지 알 수 없다 — 실측 사고: `{\"name\":\"appliedLaws[]\",\"type\":\"list\"}`만 보고 프론트가 객체 배열을 보냈고 서버는 문자열 배열을 기다려 422가 났다(하루 소요). **원소가 객체면 `fields`를, 열거형이면 `values`를 함께 적는다.**",
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "datetime",
+            "date",
+            "boolean",
+            "list",
+            "object",
+            "binary"
+          ],
+          "description": "원소 하나의 종류. 원소가 객체면 `object`, 목록의 목록이면 `list`."
+        },
+        "desc": {
+          "type": "string",
+          "description": "원소 하나가 무엇인지 한 줄."
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "원소가 열거형일 때 허용값."
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/itemField"
+          },
+          "description": "원소가 객체(`type: \"object\"`)일 때 그 객체의 필드 전부. **비우지 않는다** — 비면 `type: \"object\"`만 남아 원소 모양을 여전히 모른다."
+        },
+        "items": {
+          "$ref": "#/$defs/itemShape",
+          "description": "목록의 목록일 때 안쪽 원소 모양."
+        }
+      }
+    },
+    "itemField": {
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "desc"
+      ],
+      "additionalProperties": false,
+      "description": "목록 원소가 객체일 때 그 안의 필드 하나. 최상위 필드와 같은 어휘를 쓰되 위치(`in`)는 없다(원소 안이므로).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "필드 이름."
+        },
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "datetime",
+            "date",
+            "boolean",
+            "list",
+            "object",
+            "binary"
+          ],
+          "description": "값의 종류."
+        },
+        "desc": {
+          "type": "string",
+          "description": "무엇인지 한 줄. **필수** — 이름만으로는 뜻이 안 선다."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "항상 있는가. **표준 이름이다**(`optional`로 적지 않는다)."
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "허용값. **표준 이름이다**(`enum`으로 적지 않는다)."
+        },
+        "dataModel": {
+          "type": "string",
+          "description": "이 값이 오는 데이터 모델 변수(`<group>.<field>`)."
+        },
+        "items": {
+          "$ref": "#/$defs/itemShape",
+          "description": "이 필드가 목록일 때 원소 모양."
         }
       }
     }
