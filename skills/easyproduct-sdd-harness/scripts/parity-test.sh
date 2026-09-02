@@ -383,6 +383,96 @@ d=json.load(open('$WORK/out.json'))
 sys.exit(0 if [x for x in d['violations'] if x['rule']=='coupling']==[] else 1)
 "; then ok "G 두 마디 specsDir에서 슬라이스 변경을 인식한다($label)"; else bad "G 슬러그 파싱이 밀림($label)"; fi
   done
+  # G-2: **⑦도 같은 함정에 빠져 있었다.** ③은 "항상 운다"로 나타나 즉시 들켰고, ⑦은 "영원히 안 운다"로
+  #      나타나 안 들켰다 — 같은 코드, 반대 증상(실측 제보).
+  #      ⚠ 위 G가 ⑦을 껐기 때문에(severity off) 이 자리가 비어 있었다. **끈 규칙은 시험도 안 된다.**
+  #      ⚠ 그리고 **대조 시험만으로는 영원히 못 잡는다** — 두 구현이 같게 틀리면 결과가 일치한다.
+  #         그래서 "두 판이 같나"가 아니라 **"울어야 할 때 우나"**를 직접 단언한다.
+  python3 -c "
+import json
+p='sdd-policy.json'; d=json.load(open(p))
+d['reviewRecord']={'path':'track/specs/<slug>/upstream-check.md','requireOnChangeOf':['spec.md','plan.md']}
+d.pop('severity', None)
+json.dump(d, open(p,'w'), ensure_ascii=False, indent=2)
+"
+  printf '# spec\n- **FR-001**: 로그인\n수정\n' > track/specs/001-login/spec.md
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local runner2=node; [ "$impl" == "$PY_IMPL" ] && runner2=python3
+    "$runner2" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    local label2=node; [ "$runner2" == "python3" ] && label2=py
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+sys.exit(0 if [x for x in d['violations'] if x['rule']=='reviewRecord'] else 1)
+"; then ok "G-2 두 마디 specsDir에서 ⑦ 리뷰 기록이 운다($label2)"; else bad "G-2 ⑦이 통째로 안 돈다 — 모노레포에서 영원히 침묵($label2)"; fi
+  done
+  # 반대편: 기록을 갱신하면 조용해야 한다(이 시험이 아무 일도 안 하는 경우와 구분).
+  printf '# 상위 대조 기록\n- checkedAt: 2026-09-02\n' > track/specs/001-login/upstream-check.md
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local runner3=node; [ "$impl" == "$PY_IMPL" ] && runner3=python3
+    "$runner3" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    local label3=node; [ "$runner3" == "python3" ] && label3=py
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+sys.exit(0 if [x for x in d['violations'] if x['rule']=='reviewRecord']==[] else 1)
+"; then ok "G-2 기록을 갱신하면 ⑦이 조용하다($label3)"; else bad "G-2 기록을 갱신했는데도 운다($label3)"; fi
+  done
+  # J: 면제의 **사유**. 커밋 트레일러는 **일회성 예외**라 "왜 괜찮은지"가 남아야 한다 —
+  #    나중에 "왜 못 막았는지"를 확인할 근거가 그것뿐이다. 콜론까지만 보면 한 줄로 ③⑥을 끌 수 있었다.
+  #    ⚠ 파일 태그는 반대다: "이 파일은 SDD 대상이 아니다"라는 **상태 선언**이라 막지 않고 알리기만 한다
+  #       (예전엔 사유가 없으면 `출처 태그 없음`(block)으로 떨어졌다 — 과했다).
+  # ⚠ G-2 가 남긴 미커밋 변경(spec.md·upstream-check.md)을 **먼저 정리**한다.
+  #    안 그러면 아래 커밋에 딸려 들어가 **슬라이스가 같이 바뀌어** ③이 안 운다 —
+  #    시험이 조용해지는데 그 이유가 검사가 아니라 픽스처인 경우다.
+  git add -A >/dev/null && git commit -qm "G-2 정리" >/dev/null 2>&1 || true
+  git checkout -q -b feat/exempt 2>/dev/null || git checkout -q feat/exempt
+  printf '// @sdd 001-login\nexport const login = 3;\n' > track/src/auth/login.ts
+  git add -A >/dev/null && git commit -qm "코드만 고침
+
+SDD-Exempt:" >/dev/null
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local r4=node; [ "$impl" == "$PY_IMPL" ] && r4=python3
+    local l4=node; [ "$r4" == "python3" ] && l4=py
+    "$r4" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+ok = [x for x in d['violations'] if x['rule']=='coupling'] and any('면제로 치지 않았습니다' in x for x in (d.get('notes') or []))
+sys.exit(0 if ok else 1)
+"; then ok "J 사유 없는 트레일러는 면제로 안 치고 왜인지 알린다($l4)"; else bad "J 사유 없는 트레일러가 그대로 면제됐다($l4)"; fi
+  done
+  # 반대편 — 사유를 적으면 면제된다(이 시험이 아무 일도 안 하는 경우와 구분).
+  git commit -q --amend -m "코드만 고침
+
+SDD-Exempt: 기계적 치환이고 결정은 안 바뀐다" >/dev/null
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local r5=node; [ "$impl" == "$PY_IMPL" ] && r5=python3
+    local l5=node; [ "$r5" == "python3" ] && l5=py
+    "$r5" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+sys.exit(0 if [x for x in d['violations'] if x['rule']=='coupling']==[] else 1)
+"; then ok "J 사유를 적으면 면제된다($l5)"; else bad "J 사유를 적었는데도 ③이 운다($l5)"; fi
+  done
+  # 파일 태그는 사유가 없어도 **면제로 인정**하고 알리기만 한다.
+  printf '// @sdd:exempt\nexport const gen = 1;\n' > track/src/auth/generated.ts
+  git add -A >/dev/null && git commit -qm "생성 파일
+
+SDD-Exempt: 자동 생성 파일 추가" >/dev/null
+  for impl in "$NODE_IMPL" "$PY_IMPL"; do
+    local r6=node; [ "$impl" == "$PY_IMPL" ] && r6=python3
+    local l6=node; [ "$r6" == "python3" ] && l6=py
+    "$r6" "$impl" --full --json > "$WORK/out.json" 2>/dev/null
+    if python3 -c "
+import json,sys
+d=json.load(open('$WORK/out.json'))
+ok = ([x for x in d['violations'] if x['rule']=='provenance' and 'generated' in x['target']]==[]
+      and any('면제는 인정했습니다' in x for x in (d.get('notes') or [])))
+sys.exit(0 if ok else 1)
+"; then ok "J 사유 없는 파일 태그는 막지 않고 알리기만 한다($l6)"; else bad "J 파일 태그 처리가 틀렸다($l6)"; fi
+  done
   cd "$WORK/ep" || exit 1
 }
 
