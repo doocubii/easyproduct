@@ -212,6 +212,24 @@ run_regressions() {
     "[x for x in v if '죽은 링크' in x['message'] and 'FEAT.billing' in x['message']]==[]" -- --full
   expect "A-2 깊은 계열(UI.form.field.*) → 유령 없음" \
     "[x for x in v if '죽은 링크' in x['message'] and 'UI.form' in x['message']]==[]" -- --full
+  # I: **문서 파일 이름은 앵커가 아니다.** `ROADMAP.md` 가 `접두사 ROADMAP + 마디 md` 로 읽혀
+  #    "등기부에 없는 접두사"로 보고됐다(실사용: 한 트리에서 ROADMAP.md 28곳·CLAUDE.md 14곳 —
+  #    문서가 다른 문서를 이름으로 가리킬 때마다 걸렸다).
+  #    ⚠ 등기부에 넣는 것으로는 안 풀린다 — 파일 이름이라 넣으면 이번엔 죽은 링크로 잡힌다.
+  cat >> specs/001-login/plan.md <<'MD'
+
+- 근거: `docs/ROADMAP.md` §5.5 · CLAUDE.md 의 순서 · PRIORITY.md 참고
+- 진짜 미등록 접두사: WORKFLOW.step.one
+MD
+  expect "I 문서 파일 이름은 미등록 접두사로 세지 않는다(ROADMAP.md)" \
+    "not any('ROADMAP' in x for x in (d.get('notes') or []))" -- --full
+  expect "I CLAUDE.md·PRIORITY.md 도 마찬가지" \
+    "not any(('CLAUDE' in x or 'PRIORITY' in x) for x in (d.get('notes') or []))" -- --full
+  # 반대편 — 진짜 미등록 접두사는 여전히 잡는다(이 시험이 아무 일도 안 하는 경우와 구분).
+  expect "I 진짜 미등록 접두사는 여전히 잡는다(WORKFLOW)" \
+    "any('WORKFLOW' in x for x in (d.get('notes') or []))" -- --full
+  git checkout -q . 2>/dev/null || true
+
   # H: 접을 후보 가시화. 규칙 일곱이 전부 **변화**에만 반응하고 **은퇴**를 말하는 자리가 없으면
   #    슬라이스는 단조증가한다(실사용: 다섯 달에 78개, 절반 이상이 제품 기능이 아니었다).
   #    접기는 원래 막힌 적이 없었고 **접어도 된다는 말과 순서가 없었을 뿐**이라, 여기서 후보를 세어 준다.
