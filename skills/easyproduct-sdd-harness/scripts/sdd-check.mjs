@@ -603,12 +603,21 @@ function refPattern() {
 // **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고). 그래서 "참조처럼 생긴 것"을 따로 훑어
 // 등록 안 된 접두사를 집계한다. 오탐이 있을 수 있으므로(상수·환경변수 표기) **위반이 아니라 보고**다.
 const ANCHORISH = /\b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])/g;
+
+// **문서 파일 이름은 앵커가 아니다.** `ROADMAP.md`·`CLAUDE.md`가 `접두사 ROADMAP + 마디 md`로 읽혀
+// "등기부에 없는 접두사"로 보고됐다(실사용: 한 트리에서 `ROADMAP.md` 28곳·`CLAUDE.md` 14곳).
+// **등기부에 넣는 것으로는 안 풀린다** — 파일 이름이라 넣으면 이번엔 **죽은 링크로 잡힌다.**
+const DOC_EXTS = new Set(['md', 'markdown', 'txt', 'json', 'jsonc', 'yml', 'yaml', 'toml', 'ini', 'cfg',
+  'html', 'htm', 'csv', 'tsv', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'svg', 'webp',
+  'lock', 'sh', 'py', 'mjs', 'cjs', 'js', 'ts', 'tsx', 'jsx']);
+const looksLikeFilename = (ref) => DOC_EXTS.has(ref.split('.').pop().toLowerCase());
 function unregisteredPrefixes(texts, known) {
   const seen = new Map();
   const knownSet = new Set(known);
   for (const t of texts) for (const m of t.matchAll(ANCHORISH)) {
     const pfx = m[1];
     if (knownSet.has(pfx)) continue;
+    if (looksLikeFilename(m[0])) continue;   // `ROADMAP.md` 는 파일 이름이지 앵커가 아니다
     seen.set(pfx, (seen.get(pfx) || 0) + 1);
   }
   return [...seen.entries()].sort((a, b) => b[1] - a[1]);

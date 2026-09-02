@@ -553,6 +553,22 @@ def manifest_gaps():
 # **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고). 오탐 여지가 있어 위반이 아니라 보고다.
 ANCHORISH = re.compile(r'\b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])')
 
+# **문서 파일 이름은 앵커가 아니다.** `ROADMAP.md`·`CLAUDE.md`가 `접두사 ROADMAP + 마디 md`로 읽혀
+# "등기부에 없는 접두사"로 보고됐다(실사용: 한 트리에서 `ROADMAP.md` 28곳·`CLAUDE.md` 14곳 —
+# 문서가 다른 문서를 이름으로 가리킬 때마다 걸린다).
+#
+# **등기부에 넣는 것으로는 안 풀린다** — `ROADMAP`은 네임스페이스가 아니라 파일 이름이라, 넣으면
+# 이번엔 **죽은 링크로 잡힌다**(`ROADMAP.md`라는 앵커는 어디에도 없다). 그래서 안내가 오히려
+# **틀린 길로 이끈다.** 마지막 마디가 문서·설정 확장자면 앵커로 보지 않는다.
+DOC_EXTS = {'md', 'markdown', 'txt', 'json', 'jsonc', 'yml', 'yaml', 'toml', 'ini', 'cfg',
+            'html', 'htm', 'csv', 'tsv', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'svg', 'webp',
+            'lock', 'sh', 'py', 'mjs', 'cjs', 'js', 'ts', 'tsx', 'jsx'}
+
+
+def looks_like_filename(ref):
+    """마지막 마디가 알려진 확장자면 **파일 이름**이지 앵커가 아니다."""
+    return ref.rsplit('.', 1)[-1].lower() in DOC_EXTS
+
 
 def unregistered_prefixes(texts, known):
     seen = {}
@@ -561,6 +577,8 @@ def unregistered_prefixes(texts, known):
         for m in ANCHORISH.finditer(t):
             pfx = m.group(1)
             if pfx in known_set:
+                continue
+            if looks_like_filename(m.group(0)):   # `ROADMAP.md` 는 파일 이름이지 앵커가 아니다
                 continue
             seen[pfx] = seen.get(pfx, 0) + 1
     return sorted(seen.items(), key=lambda kv: -kv[1])
