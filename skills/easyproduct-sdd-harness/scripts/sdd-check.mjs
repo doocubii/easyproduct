@@ -182,6 +182,8 @@ const P = {
 
 const skipped = [];   // 무엇을 안 봤는지 — 리포트 머리말에 반드시 드러낸다
 const notes = [];     // 위반은 아니지만 **알아야 하는 것**(정책이 세트를 못 따라간 흔적 등)
+const bareExempt = [];      // 사유 없이 적힌 면제 트레일러의 커밋(면제로 **안** 쳤다 — 원인을 알려 준다)
+const bareFileExempt = [];  // 사유 없는 파일 태그(면제는 **인정**하되 알린다 — 상태 선언이라 막지 않는다)
 const violations = [];
 
 // 브라운필드 `mode: "warn"`은 **완료 게이트(verify·CI) 층에만** 적용한다.
@@ -237,7 +239,13 @@ const exemptOnlyFiles = (() => {
   for (const entry of raw.split('\x1e')) {
     if (!entry.trim()) continue;
     const [hash, body = ''] = entry.split('\x1f');
-    const isExempt = new RegExp(`^\\s*${escapeRe(P.exempt.commitTrailer)}\\s*:`, 'mi').test(body);
+    // **사유 없는 면제는 면제가 아니다.** 콜론까지만 보면 한 줄로 ③⑥을 끌 수 있고, 그러면
+    // **나중에 "왜 못 막았는지"를 확인할 근거가 없다** — 면제의 존재 이유가 그 기록이다.
+    // 파일 태그는 처음부터 사유를 요구했는데 여기만 새고 있었다(비대칭 회복).
+    const isExempt = new RegExp(`^\\s*${escapeRe(P.exempt.commitTrailer)}\\s*:\\s*(\\S.*)`, 'mi').test(body);
+    if (!isExempt && new RegExp(`^\\s*${escapeRe(P.exempt.commitTrailer)}\\s*:\\s*$`, 'mi').test(body)) {
+      bareExempt.push(hash.trim().slice(0, 7));
+    }
     const files = (git(['show', '--name-only', '--format=', hash.trim()], true) ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
     for (const f of files) (isExempt ? exempt : normal).add(f);
   }
@@ -248,7 +256,10 @@ const exemptOnlyFiles = (() => {
 // ─────────────────────────────── ① 출처 ───────────────────────────────
 
 const tagRe = new RegExp(`${escapeRe(P.provenanceTag)}\\s+([A-Za-z0-9._\\-/]+)`);
-const exemptRe = new RegExp(`${escapeRe(P.exempt.fileTag)}\\s+(\\S.*)`);
+// **파일 태그는 사유가 없어도 면제로 인정한다(경고만).** 면제하려던 의도가 분명한데 막는 것은 과하다.
+// 트레일러와 다르게 가는 이유: 파일 태그는 "이 파일은 SDD 대상이 아니다"라는 **상태 선언**이고,
+// 트레일러는 "이번엔 넘어간다"는 **일회성 예외**라 그때그때 근거가 남아야 한다.
+const exemptRe = new RegExp(`${escapeRe(P.exempt.fileTag)}(?:\\s+(\\S.*))?\\s*$`);
 
 function readTag(file) {
   let head;
@@ -256,7 +267,7 @@ function readTag(file) {
   const inComment = (line, idx) => P.commentSyntaxes.some((c) => { const i = line.indexOf(c); return i !== -1 && i < idx; });
   for (const line of head.split('\n')) {
     const em = exemptRe.exec(line);
-    if (em && inComment(line, em.index)) return { kind: 'exempt', reason: em[1].trim() };
+    if (em && inComment(line, em.index)) return { kind: 'exempt', reason: (em[1] ?? '').trim() };
     const m = tagRe.exec(line);
     if (m && inComment(line, m.index)) return { kind: 'tag', slug: m[1] };
   }
@@ -268,7 +279,7 @@ const provenanceTargets = opts.mode === 'changed' ? changed.filter(isGoverned) :
 
 for (const f of provenanceTargets) {
   const t = readTag(f);
-  if (t.kind === 'exempt') continue;
+  if (t.kind === 'exempt') { if (!t.reason) bareFileExempt.push(f); continue; }
   if (t.kind === 'tag') usedSlugs.add(t.slug);
   else if (t.kind === 'none') {
     violate('provenance', f, '출처 태그 없음',
@@ -305,6 +316,17 @@ if (P.unmatchedNewFiles !== 'off' && opts.mode === 'full' && baseRef) {
   }
 }
 
+if (bareExempt.length) {
+  notes.push(`사유 없는 ${P.exempt.commitTrailer} ${bareExempt.length}건 — **면제로 치지 않았습니다**: `
+    + bareExempt.slice(0, 5).join(' · ') + (bareExempt.length > 5 ? ` 외 ${bareExempt.length - 5}건` : ''));
+  notes.push('     → 트레일러 뒤에 **왜 괜찮은지** 적으세요. 나중에 "왜 못 막았는지" 확인할 근거가 그것뿐입니다.');
+}
+if (bareFileExempt.length) {
+  notes.push(`사유 없는 ${P.exempt.fileTag} ${bareFileExempt.length}건 — 면제는 인정했습니다: `
+    + bareFileExempt.slice(0, 5).join(' · ') + (bareFileExempt.length > 5 ? ` 외 ${bareFileExempt.length - 5}건` : ''));
+  notes.push('     → 왜 SDD 대상이 아닌지 한 줄 적어 두면 다음 사람이 안 헤맵니다(막지는 않습니다).');
+}
+
 // ─────────────────────────────── ② 완결 ───────────────────────────────
 
 if (P.delegated.ciGuard) skipped.push('② 완결(산출물 존재·완결성) → CI Guard 위임 · 핀 파일 검사만 유지');
@@ -336,6 +358,13 @@ const changedSet = new Set(changed);
 // 모노레포는 `frontend-user/specs`처럼 **두 마디 이상**이 정상이다(`references/monorepo.md`가 그렇게 권한다).
 // 그때 `[1]`은 `"specs"`가 되어 어떤 슬러그와도 안 맞고, ③ 결합이 **항상 발화**한다 —
 // `warn`에서는 소음이지만 `block`으로 졸업하는 순간 **관장 파일을 건드리는 모든 커밋이 막힌다**(실측).
+// **「슬라이스가 바뀌었다」는 폴더 안 아무 파일이다 — 좁히지 않는다.**
+// `spec`·`plan`·`tasks` 로 좁히자는 제안이 실사용에서 왔는데, 재 보니 **정상 작업을 새로 막았다**
+// (구현 중 `handoff.md` 만 고친 커밋 2건). 좁힘의 최종형인 "내용이 실제로 바뀐 파일만"은 **이미 지금
+// 동작이다** — `git diff` 가 내용이 바뀐 것만 낸다.
+//
+// ⚠ **「무엇이 바뀌었나」로는 이 구멍을 못 닫는다.** 닫으려면 **순서**(spec 이 먼저였나)를 봐야 하는데
+// 이 검사는 범위의 **동시성**만 본다. 한계로 적고, 대신 **문구가 ⓑ「spec 을 먼저 고쳐라」를 말하게** 한다.
 const sliceChangedDirs = new Set(
   changed
     .filter((f) => f.startsWith(`${P.specsDir}/`))
@@ -355,8 +384,17 @@ for (const f of changed) {
       // 「갱신」은 *닫힌 슬라이스를 다시 여는 것*으로, 「면제」는 *규칙을 피하는 것*으로 보였다.
       // 그래서 **문구에 없는 셋째 길(새 슬라이스를 만들고 태그를 옮긴다)이 제일 떳떳해 보였고**,
       // 실사용에서 슬라이스가 78개까지 늘었다(절반 이상이 제품 기능이 아니었다).
-      `이 변경을 흡수할 슬라이스의 spec/plan/tasks를 갱신하라 — **기존 슬라이스여도 된다**`
-      + `(새로 만들 필요 없다). 무관한 변경이면 커밋 트레일러 \`${P.exempt.commitTrailer}: …\`로 면제.`,
+      // **선택지만 나열하면 「가장 싸게 조용히 시키는 법」만 배운다.** 예전 두 갈래는 「갱신」·「면제」
+      // 둘 다 *코드는 그대로 두는* 길이라, SDD 가 정작 말하려는 갈래 — *"spec 에 없는 것을 코드로
+      // 정했으면 코드가 아니라 spec 을 먼저 고쳐라"* — 가 화면에 없었다. 그래서 **물음을 먼저** 세운다.
+      '이 변경은 **어디서 나왔나?**\n'
+      + '      ⓐ 승인된 spec 에서 나왔다\n'
+      + '         → 그 슬라이스의 spec/plan/tasks 에 흔적을 남겨라. **기존 슬라이스여도 된다**(새로 만들지 않는다)\n'
+      + '      ⓑ spec 에 없는 것을 **코드로 새로 정했다**\n'
+      + '         → **코드가 아니라 spec 을 먼저 고쳐라.** 그것이 SDD 이고, 이 검사가 보는 것이 그 순서다\n'
+      + '      ⓒ spec 과 무관하다(오탈자·포맷·기계적 수정)\n'
+      + `         → 커밋 트레일러 \`${P.exempt.commitTrailer}: <사유>\` (**사유가 없으면 면제로 안 친다**)\n`
+      + '      ⚠ 셋 중 무엇인지는 **사람만 안다.** 이 검사는 흔적이 있나만 본다.',
       { slug: t.slug });
   }
 }
@@ -397,7 +435,11 @@ const upstreamChanged = changed.filter((f) => upstreamMatcher(f) && !exemptOnlyF
 // 훅(--changed)에서도 경고로는 본다 — severity는 sev()가 낮춘다.
 if (upstreamChanged.length > 0 && sliceChangedDirs.size === 0) {
   violate('reverseCoupling', upstreamChanged.join(', '), '상위 문서만 바뀌고 슬라이스가 하나도 안 바뀜',
-    `이 변경을 어느 슬라이스가 흡수하는지 SDD로 재검토하고 그 슬라이스에 흔적을 남겨라(무해한 오탈자·포맷이면 \`${P.exempt.commitTrailer}\` 트레일러로 면제)`);
+    '상위가 바뀌었다. **구현은 어떻게 되나?**\n'
+    + '      ⓐ 구현을 고쳐야 한다 → 그 슬라이스로 재검토해 **코드까지** 간다\n'
+    + '      ⓑ 문서 정합만 맞추면 된다 → 흡수할 슬라이스에 흔적을 남긴다\n'
+    + '      ⓒ 무해한 오탈자·포맷이다\n'
+    + `         → 커밋 트레일러 \`${P.exempt.commitTrailer}: <사유>\` (**사유가 없으면 면제로 안 친다**)`);
 }
 
 // ─────────────────────────────── ④ 신선도 ───────────────────────────────
@@ -734,9 +776,18 @@ if (opts.mode !== 'changed' && sev('reviewRecord') !== 'off') {
   const touched = new Map();       // slug → 바뀐 파일들
   for (const f of changed) {
     if (!f.startsWith(`${P.specsDir}/`)) continue;
-    const [, slug, ...rest] = f.split('/');
-    if (!slug || rest.length === 0) continue;
-    const rel = rest.join('/');
+    // **슬러그는 specsDir 바로 다음 마디다.** `split('/')[1]`로 뽑으면 specsDir가 한 마디일 때만
+    // 맞는데, 모노레포는 `backend/specs`처럼 두 마디 이상이 정상이다(references/monorepo.md 권장).
+    // 그때 slug는 'specs'가 되고 rel이 '<slug>/spec.md'가 되어 **watch와 절대 안 맞는다** →
+    // `continue` → **⑦이 통째로 안 돈다.**
+    //
+    // ③ 결합은 같은 함정을 이미 고쳤는데 ⑦은 안 고쳤다. **③은 "항상 운다"로 나타나 즉시 들켰고,
+    // ⑦은 "영원히 안 운다"로 나타나 안 들켰다** — 같은 코드, 반대 증상(실측 제보).
+    // ⚠ 대조 시험으로도 안 잡혔다: **두 구현이 같게 틀려서** 결과가 일치했다.
+    const parts = f.slice(P.specsDir.length + 1).split('/');
+    if (parts.length < 2) continue;
+    const slug = parts[0];
+    const rel = parts.slice(1).join('/');
     if (!watch.includes(rel)) continue;
     if (!touched.has(slug)) touched.set(slug, []);
     touched.get(slug).push(rel);
