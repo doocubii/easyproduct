@@ -265,6 +265,8 @@ P = {
 
 skipped = []      # 무엇을 안 봤는지 — 리포트 머리말에 반드시 드러낸다
 notes = []        # 위반은 아니지만 **알아야 하는 것**(정책이 세트를 못 따라간 흔적 등)
+bare_exempt = []       # 사유 없이 적힌 면제 트레일러의 커밋(면제로 **안** 쳤다 — 원인을 알려 준다)
+bare_file_exempt = []  # 사유 없는 파일 태그(면제는 **인정**하되 알린다 — 상태 선언이라 막지 않는다)
 violations = []
 
 
@@ -345,8 +347,14 @@ def compute_exempt_only():
         return set()
     raw = git(['log', f'{BASE_REF}..HEAD', '--pretty=format:%H%x1f%B%x1e'], True) or ''
     exempt, normal = set(), set()
-    trailer_re = re.compile(r'^\s*' + re.escape(P['exempt'].get('commitTrailer', 'SDD-Exempt')) + r'\s*:',
+    # **사유 없는 면제는 면제가 아니다.** 콜론까지만 보면 `SDD-Exempt:` 한 줄로 ③⑥을 끌 수 있고,
+    # 그러면 **나중에 "왜 못 막았는지"를 확인할 근거가 없다** — 면제의 존재 이유가 그 기록이다.
+    # 파일 태그(`@sdd:exempt <사유>`)는 처음부터 사유를 요구했는데 여기만 새고 있었다(비대칭 회복).
+    # 실측: 실사용 저장소 세 곳의 트레일러 55건 전부 사유가 있어 **깨지는 것이 없다.**
+    trailer_re = re.compile(r'^\s*' + re.escape(P['exempt'].get('commitTrailer', 'SDD-Exempt')) + r'\s*:\s*(\S.*)',
                             re.M | re.I)
+    bare_re = re.compile(r'^\s*' + re.escape(P['exempt'].get('commitTrailer', 'SDD-Exempt')) + r'\s*:\s*$',
+                         re.M | re.I)
     for entry in raw.split('\x1e'):
         if not entry.strip():
             continue
@@ -354,6 +362,8 @@ def compute_exempt_only():
         h = parts[0].strip()
         body = parts[1] if len(parts) > 1 else ''
         is_exempt = bool(trailer_re.search(body))
+        if not is_exempt and bare_re.search(body):
+            bare_exempt.append(h[:7])       # 왜 안 먹었는지 알려 준다(아래 note)
         files = [s.strip() for s in (git(['show', '--name-only', '--format=', h], True) or '').split('\n') if s.strip()]
         for f in files:
             (exempt if is_exempt else normal).add(f)
@@ -368,7 +378,11 @@ EXEMPT_ONLY = compute_exempt_only()
 # ─────────────────────────────── ① 출처 ───────────────────────────────
 
 TAG_RE = re.compile(re.escape(P['provenanceTag']) + r'\s+([A-Za-z0-9._\-/]+)')
-EXEMPT_RE = re.compile(re.escape(P['exempt'].get('fileTag', '@sdd:exempt')) + r'\s+(\S.*)')
+# **파일 태그는 사유가 없어도 면제로 인정한다(경고만).** 예전엔 사유가 없으면 정규식이 안 맞아
+# `출처 태그 없음`(block)으로 떨어졌는데, **면제하려던 의도가 분명한데 막는 것은 과하다.**
+# 커밋 트레일러와 다르게 가는 이유: 파일 태그는 "이 파일은 SDD 대상이 아니다"라는 **상태 선언**이라
+# 한 번 쓰면 계속 있고, 트레일러는 "이번엔 넘어간다"는 **일회성 예외**라 그때그때 근거가 남아야 한다.
+EXEMPT_RE = re.compile(re.escape(P['exempt'].get('fileTag', '@sdd:exempt')) + r'(?:\s+(\S.*))?\s*$')
 
 
 def in_comment(line, idx):
@@ -387,7 +401,7 @@ def read_tag(rel):
     for line in head.split('\n'):
         em = EXEMPT_RE.search(line)
         if em and in_comment(line, em.start()):
-            return {'kind': 'exempt', 'reason': em.group(1).strip()}
+            return {'kind': 'exempt', 'reason': (em.group(1) or '').strip()}
         m = TAG_RE.search(line)
         if m and in_comment(line, m.start()):
             return {'kind': 'tag', 'slug': m.group(1)}
@@ -406,6 +420,8 @@ provenance_targets = [f for f in CHANGED if is_governed(f)] if OPTS['mode'] == '
 for f in provenance_targets:
     t = read_tag(f)
     if t['kind'] == 'exempt':
+        if not t['reason']:
+            bare_file_exempt.append(f)      # 면제는 인정하되 사유가 비었음을 알린다
         continue
     if t['kind'] == 'tag':
         add_slug(t['slug'])
@@ -451,6 +467,17 @@ if P['unmatchedNewFiles'] != 'off' and OPTS['mode'] == 'full' and BASE_REF:
                 severity=P['unmatchedNewFiles'])
 
 
+if bare_exempt:
+    notes.append(f"사유 없는 {P['exempt'].get('commitTrailer', 'SDD-Exempt')} {len(bare_exempt)}건 — "
+                 f"**면제로 치지 않았습니다**: {' · '.join(bare_exempt[:5])}"
+                 + (f" 외 {len(bare_exempt) - 5}건" if len(bare_exempt) > 5 else ''))
+    notes.append('     → 트레일러 뒤에 **왜 괜찮은지** 적으세요. 나중에 "왜 못 막았는지" 확인할 근거가 그것뿐입니다.')
+if bare_file_exempt:
+    notes.append(f"사유 없는 {P['exempt'].get('fileTag', '@sdd:exempt')} {len(bare_file_exempt)}건 — "
+                 f"면제는 인정했습니다: {' · '.join(bare_file_exempt[:5])}"
+                 + (f" 외 {len(bare_file_exempt) - 5}건" if len(bare_file_exempt) > 5 else ''))
+    notes.append('     → 왜 SDD 대상이 아닌지 한 줄 적어 두면 다음 사람이 안 헤맵니다(막지는 않습니다).')
+
 # ─────────────────────────────── ② 완결 ───────────────────────────────
 
 if P['delegated'].get('ciGuard'):
@@ -482,6 +509,14 @@ for slug in scoped_slugs:
 # 모노레포는 'frontend-user/specs'처럼 두 마디 이상이 정상이다(references/monorepo.md가 그렇게 권한다).
 # 그때 [1]은 'specs'가 되어 어떤 슬러그와도 안 맞고, ③ 결합이 항상 발화한다 —
 # warn에서는 소음이지만 block으로 졸업하는 순간 관장 파일을 건드리는 모든 커밋이 막힌다(실측).
+# **「슬라이스가 바뀌었다」는 폴더 안 아무 파일이다 — 좁히지 않는다.**
+# `spec`·`plan`·`tasks` 로 좁히자는 제안이 실사용에서 왔는데, 재 보니 **정상 작업을 새로 막았다**
+# (구현 중 `handoff.md` 만 고친 커밋 2건). 그리고 좁힘의 최종형인 "내용이 실제로 바뀐 파일만 센다"는
+# **이미 지금 동작이다** — `git diff` 가 내용이 바뀐 것만 낸다.
+#
+# ⚠ **그래서 「무엇이 바뀌었나」로는 이 구멍을 못 닫는다.** 주석 한 줄과 정당한 작업을 내용만 보고
+# 가를 방법이 없다. 닫으려면 **순서**(spec 이 먼저였나)를 봐야 하는데 이 검사는 범위의 **동시성**만 본다.
+# 한계로 적어 두고, 대신 **문구가 ⓑ「spec 을 먼저 고쳐라」를 말하게** 한다(그게 실제로 듣는 사람에게 닿는다).
 slice_changed_dirs = set()
 for f in CHANGED:
     if f.startswith(P['specsDir'] + '/'):
@@ -497,8 +532,24 @@ for f in CHANGED:
         continue
     if t['slug'] not in slice_changed_dirs:
         violate('coupling', f, f"코드가 바뀌었는데 슬라이스({P['specsDir']}/{t['slug']})에 변경이 없음",
-                f"spec/plan/tasks를 먼저 갱신하거나, 사유와 함께 커밋 트레일러 "
-                f"`{P['exempt'].get('commitTrailer', 'SDD-Exempt')}: …`", slug=t['slug'])
+                # **「흡수」를 말한다(⑥과 같은 어휘).** 예전엔 "먼저 갱신하거나 … 면제"였는데,
+                # 읽는 쪽에서 「갱신」은 *닫힌 슬라이스를 다시 여는 것*으로, 「면제」는 *규칙을 피하는 것*으로
+                # 보였다. 그래서 **문구에 없는 셋째 길(새 슬라이스를 만들고 태그를 옮긴다)이 제일 떳떳해
+                # 보였고**, 실사용에서 슬라이스가 78개까지 늘었다(절반 이상이 제품 기능이 아니었다).
+                # **선택지만 나열하면 「가장 싸게 조용히 시키는 법」만 배운다.** 예전 두 갈래는
+                # 「갱신」·「면제」 둘 다 *코드는 그대로 두는* 길이라, SDD 가 정작 말하려는 갈래 —
+                # *"spec 에 없는 것을 코드로 정했으면 코드가 아니라 spec 을 먼저 고쳐라"* — 가
+                # 화면에 없었다. 그게 막으려는 C1 그 자체인데도. 그래서 **물음을 먼저** 세운다.
+                "이 변경은 **어디서 나왔나?**\n"
+                "      ⓐ 승인된 spec 에서 나왔다\n"
+                "         → 그 슬라이스의 spec/plan/tasks 에 흔적을 남겨라. "
+                "**기존 슬라이스여도 된다**(새로 만들지 않는다)\n"
+                "      ⓑ spec 에 없는 것을 **코드로 새로 정했다**\n"
+                "         → **코드가 아니라 spec 을 먼저 고쳐라.** 그것이 SDD 이고, 이 검사가 보는 것이 그 순서다\n"
+                "      ⓒ spec 과 무관하다(오탈자·포맷·기계적 수정)\n"
+                f"         → 커밋 트레일러 `{P['exempt'].get('commitTrailer', 'SDD-Exempt')}: <사유>` "
+                "(**사유가 없으면 면제로 안 친다**)\n"
+                "      ⚠ 셋 중 무엇인지는 **사람만 안다.** 이 검사는 흔적이 있나만 본다.", slug=t['slug'])
 
 
 # ─────────────────────────────── ⑥ 역결합 ───────────────────────────────
@@ -548,6 +599,22 @@ def manifest_gaps():
 # **검사받던 참조가 검사 안 받는 참조로 조용히 바뀐다**(실제 사고). 오탐 여지가 있어 위반이 아니라 보고다.
 ANCHORISH = re.compile(r'\b([A-Z][A-Z0-9]{1,15})\.[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])')
 
+# **문서 파일 이름은 앵커가 아니다.** `ROADMAP.md`·`CLAUDE.md`가 `접두사 ROADMAP + 마디 md`로 읽혀
+# "등기부에 없는 접두사"로 보고됐다(실사용: 한 트리에서 `ROADMAP.md` 28곳·`CLAUDE.md` 14곳 —
+# 문서가 다른 문서를 이름으로 가리킬 때마다 걸린다).
+#
+# **등기부에 넣는 것으로는 안 풀린다** — `ROADMAP`은 네임스페이스가 아니라 파일 이름이라, 넣으면
+# 이번엔 **죽은 링크로 잡힌다**(`ROADMAP.md`라는 앵커는 어디에도 없다). 그래서 안내가 오히려
+# **틀린 길로 이끈다.** 마지막 마디가 문서·설정 확장자면 앵커로 보지 않는다.
+DOC_EXTS = {'md', 'markdown', 'txt', 'json', 'jsonc', 'yml', 'yaml', 'toml', 'ini', 'cfg',
+            'html', 'htm', 'csv', 'tsv', 'xml', 'pdf', 'png', 'jpg', 'jpeg', 'svg', 'webp',
+            'lock', 'sh', 'py', 'mjs', 'cjs', 'js', 'ts', 'tsx', 'jsx'}
+
+
+def looks_like_filename(ref):
+    """마지막 마디가 알려진 확장자면 **파일 이름**이지 앵커가 아니다."""
+    return ref.rsplit('.', 1)[-1].lower() in DOC_EXTS
+
 
 def unregistered_prefixes(texts, known):
     seen = {}
@@ -557,6 +624,8 @@ def unregistered_prefixes(texts, known):
             pfx = m.group(1)
             if pfx in known_set:
                 continue
+            if looks_like_filename(m.group(0)):   # `ROADMAP.md` 는 파일 이름이지 앵커가 아니다
+                continue
             seen[pfx] = seen.get(pfx, 0) + 1
     return sorted(seen.items(), key=lambda kv: -kv[1])
 upstream_changed = [f for f in CHANGED if upstream_matcher(f) and f not in EXEMPT_ONLY]
@@ -564,8 +633,12 @@ upstream_changed = [f for f in CHANGED if upstream_matcher(f) and f not in EXEMP
 # 훅(--changed)에서도 경고로는 본다 — severity는 sev()가 낮춘다.
 if upstream_changed and not slice_changed_dirs:
     violate('reverseCoupling', ', '.join(upstream_changed), '상위 문서만 바뀌고 슬라이스가 하나도 안 바뀜',
-            '이 변경을 어느 슬라이스가 흡수하는지 SDD로 재검토하고 그 슬라이스에 흔적을 남겨라'
-            f"(무해한 오탈자·포맷이면 `{P['exempt'].get('commitTrailer', 'SDD-Exempt')}` 트레일러로 면제)")
+            '상위가 바뀌었다. **구현은 어떻게 되나?**\n'
+            '      ⓐ 구현을 고쳐야 한다 → 그 슬라이스로 재검토해 **코드까지** 간다\n'
+            '      ⓑ 문서 정합만 맞추면 된다 → 흡수할 슬라이스에 흔적을 남긴다\n'
+            '      ⓒ 무해한 오탈자·포맷이다\n'
+            f"         → 커밋 트레일러 `{P['exempt'].get('commitTrailer', 'SDD-Exempt')}: <사유>` "
+            "(**사유가 없으면 면제로 안 친다**)")
 
 
 # ─────────────────────────────── ④ 신선도 ───────────────────────────────
@@ -670,6 +743,47 @@ for slug in scoped_slugs:
     check_pins(read_pins(f"{P['specsDir']}/{slug}/{P['requiredPinFile']}"), slug)
 if P['pins'].get('globalPinFile'):
     check_pins(read_pins(P['pins']['globalPinFile']), '<project>')   # 전역 원칙은 한 번만 본다
+
+
+# ─────────────────── 접을 후보 가시화 (위반 아님 · 정보 등급) ───────────────────
+# 규칙 일곱이 전부 **변화**에 반응하고 **은퇴**를 말하는 자리가 없으면 슬라이스는 단조증가한다
+# (실사용: 다섯 달에 78개, 절반 이상이 제품 기능이 아니었다). 접기는 원래 막힌 적이 없는데
+# **접어도 된다는 말과 순서가 없었을 뿐**이다. 그래서 여기서 **후보를 세어 준다**.
+#
+# **위반이 아니라 정보(`·`)다** — 아직 코드를 안 쓴 진행 중 슬라이스도 걸리므로 종료코드를 안 바꾼다.
+# 판단은 사람이 한다.
+if OPTS['mode'] == 'full' and scoped_slugs:
+    # ① 구속력 있는 태그가 없는 슬라이스. **allowlist 안의 태그는 세지 않는다** —
+    #    ③이 `is_governed`를 먼저 보므로 그 태그는 검사기가 안 본다(장식이다).
+    #    실사용자가 이걸 몰라 시험·하네스의 태그까지 세는 바람에 처음에 일곱 개밖에 못 줄였다.
+    binding = set()
+    for f in GOVERNED:
+        t = read_tag(f)
+        if t and t.get('slug'):
+            binding.add(t['slug'])
+    foldable = [g for g in scoped_slugs if g not in binding]
+
+    # ② **이 슬라이스만** 핀한 상위 문서. 그냥 접으면 그 문서가 바뀌어도 ④가 **아무 데서도 안 운다** —
+    #    하네스가 존재하는 이유를 스스로 깎는 자리라, 접기 전에 핀을 옮겨야 한다.
+    #    실사용자는 이걸 스크립트를 짜서 셌다.
+    pinners = {}
+    for g in scoped_slugs:
+        for pin in read_pins(f"{P['specsDir']}/{g}/{P['requiredPinFile']}"):
+            pinners.setdefault(pin['path'], set()).add(g)
+    sole = sorted((doc, next(iter(gs))) for doc, gs in pinners.items() if len(gs) == 1)
+
+    if foldable:
+        notes.append(f"구속력 있는 태그가 없는 슬라이스 {len(foldable)}개 — 접을 수 있는지 보세요: "
+                     + ', '.join(foldable[:8]) + (f" 외 {len(foldable) - 8}개" if len(foldable) > 8 else ""))
+        notes.append('     (allowlist 안 태그는 안 셉니다 — ③이 그걸 안 보기 때문입니다)')
+        notes.append('     → 접는 순서: SKILL.md 「슬라이스를 언제 열고 언제 접나」')
+    if sole:
+        notes.append(f"이 슬라이스만 핀한 상위 문서 {len(sole)}건 — 그냥 접으면 ④가 아무 데서도 안 웁니다")
+        for doc, g in sole[:5]:
+            notes.append(f"     {g} → {doc}")
+        if len(sole) > 5:
+            notes.append(f"     외 {len(sole) - 5}건")
+        notes.append('     → 접기 전에 핀을 옮기세요(접는 순서 2번)')
 
 
 # ─────────────────────────────── 등기부(어댑터) ───────────────────────────────
@@ -885,10 +999,18 @@ if OPTS['mode'] != 'changed' and sev('reviewRecord') != 'off':
     for f in CHANGED:
         if not f.startswith(P['specsDir'] + '/'):
             continue
-        parts = f.split('/')
-        if len(parts) < 3:
+        # **슬러그는 specsDir 바로 다음 마디다.** `split('/')[1]`로 뽑으면 specsDir가 한 마디일 때만
+        # 맞는데, 모노레포는 `backend/specs`처럼 두 마디 이상이 정상이다(references/monorepo.md 권장).
+        # 그때 [1]은 'specs'가 되고 rel이 '<slug>/spec.md'가 되어 **watch와 절대 안 맞는다** →
+        # `continue` → **⑦이 통째로 안 돈다.**
+        #
+        # ③ 결합은 같은 함정을 이미 고쳤는데 ⑦은 안 고쳤다. **③은 "항상 운다"로 나타나 즉시 들켰고,
+        # ⑦은 "영원히 안 운다"로 나타나 안 들켰다** — 같은 코드, 반대 증상(실측 제보).
+        # ⚠ 대조 시험으로도 안 잡혔다: **두 구현이 같게 틀려서** 결과가 일치했다.
+        rest = f[len(P['specsDir']) + 1:].split('/')
+        if len(rest) < 2:
             continue
-        slug, rel = parts[1], '/'.join(parts[2:])
+        slug, rel = rest[0], '/'.join(rest[1:])
         if rel not in watch:
             continue
         touched.setdefault(slug, []).append(rel)
