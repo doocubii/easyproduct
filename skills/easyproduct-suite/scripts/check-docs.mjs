@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 // 신선도 검사는 화면만 보기 때문이다(실제 사고: 일회성 결과를 실어 나르게 고쳤는데 옛 요청서는
 // 그 열이 빈 채 남았고 점검기는 통과라고 답했다).
 // **손으로 고치지 않는다** — skill-lint 가 suite SKILL.md 의 버전과 대조해 어긋나면 베타 머지를 막는다.
-const TOOL_VERSION = '0.12.12';
+const TOOL_VERSION = '0.13.0';
 
 // ── frontmatter 파서 (이 세트의 통제된 형식 전용: 최상위 key:value + 1단계 machine 중첩) ──
 function parseFrontmatter(md) {
@@ -582,6 +582,7 @@ const basisNotInReq = [];   // basis(screen-io)가 요청서에 안 실린 동�
 const fieldAliases = [];    // 계약 필드가 별칭 키를 씀 {itfId, field, alias, want, doc}
 const listNoItems = [];     // type: list 인데 원소 모양이 없음 {itfId, field, flattened, doc}
 const noOrigin = [];        // 필드의 근거 갈래 미기재 {itfId, field, doc}
+const noNullable = [];      // 응답 필드에 `nullable` 미기재 — **침묵이지 약속이 아니다** {itfId, field, doc}
 for (const doc of loaded) {
   for (const o of doc.blocks) {
     if (o.__parseError) continue;
@@ -758,6 +759,13 @@ for (const doc of loaded) {
           if (fl.type === 'list' && !fl.items) {
             listNoItems.push({ itfId: i.id, field: `${side}.${fl.name}`, flattened: flatParents.has(bare), doc: doc.path });
           }
+          // **응답 필드의 「값이 빌 수 있나」가 판정됐나.** `required`(키가 오나)와 **다른 축**이고,
+          // 스키마는 **「안 적힘」과 `false` 를 못 가른다** — 키가 없으면 둘이 같아 보인다.
+          // 그래서 여기서 센다. **적지 않은 것을 `false` 로 채우면 안 된다** — 실측: 어느 계약은
+          // 112칸 중 103칸이 미기재였는데, 일괄로 채우면 **아무도 확인하지 않은 것이 약속으로 바뀐다.**
+          if (side === 'response' && fl.nullable === undefined && !flatParents.has(bare)) {
+            noNullable.push({ itfId: i.id, field: fl.name, doc: doc.path });
+          }
           // **이 값이 어디서 오는지**가 셋 중 하나로 적혀 있나(저장 · 파생 · 일회성).
           const origins = ['dataModel', 'derivedFrom', 'transient'].filter((k) => fl[k] != null && fl[k] !== false);
           if (origins.length > 1) {
@@ -865,6 +873,16 @@ if (listNoItems.length) {
     '→ 형제 배열이라 스키마가 못 봅니다. `items.fields`로 모으면 원소 모양이 한자리에 섭니다.');
   show(bare, '**원소 모양을 적으세요** — 어디에도 원소 정보가 없습니다',
     '→ `items: { "type": "…", "desc": "…" }`. 원소가 객체면 `fields`, 열거형이면 `values`를 함께.');
+}
+
+// 응답 필드의 **「값이 빌 수 있나」**가 아직 판정되지 않은 것. **위반이 아니라 집계다** —
+// 스키마가 「안 적힘」과 `false` 를 못 가르기 때문에 여기서만 보인다.
+if (noNullable.length) {
+  report(`\n  · 응답 필드에 \`nullable\`(값이 빌 수 있나)이 안 적힌 것 ${noNullable.length}건 — **아직 판정되지 않았습니다**`);
+  for (const x of noNullable.slice(0, CAP(noNullable.length))) report(`     · ${x.itfId} 의 ${x.field}`);
+  if (!verbose && noNullable.length > 5) report(`     · 외 ${noNullable.length - 5}건 (--verbose로 전부)`);
+  report('     → `required`(키가 오나)와 **다른 축**입니다. 받는 쪽에게 `"b" in data` 와 `data.b === null` 은 다른 코드입니다.');
+  report('     ⚠ **일괄로 채우지 마세요.** 안 적힘은 "아직 아무도 안 봤다"이고, 채우는 순간 **약속이 됩니다.**');
 }
 
 // 값이 **어디서 오는지**가 안 적힌 필드. 저장·파생·일회성 셋 중 하나여야 한다.
