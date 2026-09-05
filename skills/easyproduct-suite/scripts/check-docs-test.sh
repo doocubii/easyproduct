@@ -1278,6 +1278,9 @@ MD
   python3 - "$IT/ssot/backend/backend-interface.md" "$1" <<'PY'
 import sys
 p, body = sys.argv[1], sys.argv[2]
+# 스키마 필수인 scope·domain 을 넣어 준다 — 없으면 픽스처가 늘 위반 2건이라
+# "통과한다"를 단언하는 시험을 쓸 수 없다(그동안 아무도 그걸 단언하지 않아 안 보였다).
+body = body.replace('{"interfaces":', '{"scope":"user","domain":"x","interfaces":', 1)
 s = open(p, encoding='utf-8').read().replace('__BODY__', body)
 open(p, 'w', encoding='utf-8').write(s)
 PY
@@ -1660,6 +1663,39 @@ node "$CHECK" "$DV" > "$WORK/out.txt" 2>&1
 expect_out "파생물이 바뀐 것은 알린다(하류 재검토)" "다시 뽑혀 바뀜 — 하류 재검토 필요"
 expect_out "왜 개정을 안 올리는지 밝힌다" "파생물이라 개정 번호를 사람이 올리지 않습니다"
 expect_no_out "파생물에 개정을 올리라고 하지 않는다" "개정 번호 없이 수정됨"
+
+echo
+echo "[34] 응답 칸의 두 축 — 키가 오나(required) vs 값이 비나(nullable)"
+# 실사용 제보: 한 낱말이 두 축을 덮어, **키를 절대 빼지 않는** 서버에서는 512칸이 전부 true 가 되어
+# 아무 정보도 안 실렸다. 받는 쪽에게 `"b" in data` 와 `data.b === null` 은 **다른 코드**다.
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"a\",\"type\":\"string\",\"desc\":\"값\",\"required\":true,\"nullable\":true,\"transient\":true}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "두 축을 함께 적으면 통과한다" "backend-interface.md (backend-interface) 블록:1 위반:0"
+expect_no_out "적었으면 미판정으로 안 센다" "nullable\`(값이 빌 수 있나)이 안 적힌"
+
+# 안 적으면 **집계**한다 — 스키마는 「안 적힘」과 false 를 못 가른다.
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"a\",\"type\":\"string\",\"desc\":\"값\",\"required\":true,\"transient\":true}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "안 적으면 미판정으로 집계한다" "안 적힌 것 1건"
+expect_out "일괄로 채우지 말라고 못박는다" "일괄로 채우지 마세요"
+expect_out "두 축이 다르다고 알린다" "다른 축"
+
+# false 로 적은 것은 **판정한 것**이라 집계에서 빠진다(침묵과 구별되는 자리).
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"a\",\"type\":\"string\",\"desc\":\"값\",\"required\":true,\"nullable\":false,\"transient\":true}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "false 는 판정한 것이라 집계에서 빠진다" "안 적힌 것 1건"
+
+echo
+echo "[35] 응답 칸의 비대칭 — 최상위에도 모르는 키를 막는다"
+# 중첩(items.fields)만 닫혀 있어서, 중첩을 **최상위에 fields 로 잘못 달면 조용히 통과**했다.
+# 이 계약을 읽는 도구는 items.fields 만 따라가므로 **그 칸을 아무도 안 본다**(실측 6칸).
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"p\",\"type\":\"object\",\"desc\":\"상품\",\"required\":true,\"nullable\":false,\"transient\":true,\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"아이디\"}]}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_out "최상위에 잘못 단 fields 를 잡는다" "response.fields[0].fields — 스키마에 없는 키"
+# 제대로 items.fields 에 달면 통과한다(반대편 — 이 시험이 아무 일도 안 하는 경우와 구분)
+mkitf "{\"interfaces\":[${base}\"response\":{\"fields\":[{\"name\":\"p\",\"type\":\"list\",\"desc\":\"목록\",\"required\":true,\"nullable\":false,\"transient\":true,\"items\":{\"type\":\"object\",\"desc\":\"한 줄\",\"fields\":[{\"name\":\"id\",\"type\":\"string\",\"desc\":\"아이디\"}]}}]}}]}"
+node "$CHECK" "$IT" > "$WORK/out.txt" 2>&1
+expect_no_out "items.fields 에 제대로 달면 통과한다" "스키마에 없는 키"
 
 echo
 echo "결과: 통과 $pass · 실패 $fail"
